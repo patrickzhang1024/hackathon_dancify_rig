@@ -28,7 +28,8 @@ if (Test-Path $dist) { Remove-Item -Recurse -Force $dist }
 New-Item -ItemType Directory -Force -Path `
   $dist, `
   (Join-Path $dist 'vendor'), `
-  (Join-Path $dist 'vendor') | Out-Null
+  (Join-Path $dist 'vendor/jsm/loaders'), `
+  (Join-Path $dist 'assets') | Out-Null
 
 # Concatenate the classic bundle.
 $bundle = Join-Path $dist 'app.bundle.js'
@@ -44,6 +45,9 @@ foreach ($f in $order) {
 # Copy static assets + vendored ES-module deps.
 Copy-Item (Join-Path $src 'styles.css') (Join-Path $dist 'styles.css') -Force
 Copy-Item (Join-Path $root 'vendor/three.module.js')     (Join-Path $dist 'vendor/three.module.js') -Force
+Copy-Item (Join-Path $root 'vendor/jsm/loaders/GLTFLoader.js') (Join-Path $dist 'vendor/jsm/loaders/GLTFLoader.js') -Force
+Copy-Item (Join-Path $root 'assets/models') (Join-Path $dist 'assets/models') -Recurse -Force
+Copy-Item (Join-Path $root 'assets/components') (Join-Path $dist 'assets/components') -Recurse -Force
 
 # Compiled index.html: transform the known-good src/index.html so we keep its
 # exact markup + charset + the THREE module boot block, swapping only the

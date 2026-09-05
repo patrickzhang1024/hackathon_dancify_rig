@@ -45,15 +45,23 @@
   };
   const midpoint = DANCE.motionScript.evaluate(interpolationScript, 1);
   assert('rotation and root position interpolate at sub-beat time within anatomical limits',
-    midpoint.hips.ry === 0.8 && midpoint.hips.px === 1 && midpoint.toeLittleR.rx === 0.5,
+    midpoint.hips.ry === 0.7 && midpoint.hips.px === 1 && midpoint.toeLittleR.rx === 0.5,
     JSON.stringify({ hips: midpoint.hips, toe: midpoint.toeLittleR }));
 
   const unsafeScript = JSON.parse(JSON.stringify(interpolationScript));
   unsafeScript.tracks.lowerLegL = { rotation: [{ beat: 0, value: [-2, 1, -1] }] };
   const bounded = DANCE.motionScript.evaluate(unsafeScript, 0).lowerLegL;
   assert('anatomical limits prevent knee hyperextension and lateral twisting',
-    bounded.rx === -0.1 && bounded.ry === 0.18 && bounded.rz === -0.18,
+    bounded.rx === -0.09 && bounded.ry === 0.12 && bounded.rz === -0.12,
     JSON.stringify(bounded));
+
+  const handLimits = JSON.parse(JSON.stringify(interpolationScript));
+  handLimits.tracks.indexIntermediateL = { rotation: [{ beat: 0, value: [-1, 1, -1] }] };
+  handLimits.tracks.thumbDistalR = { rotation: [{ beat: 0, value: [-1, 1, -1] }] };
+  const limitedHand = DANCE.motionScript.evaluate(handLimits, 0);
+  assert('finger segments use hinge-specific anatomical limits',
+    JSON.stringify(limitedHand.indexIntermediateL) === JSON.stringify({ rx: 0, ry: 0.08, rz: -0.08 }) &&
+      JSON.stringify(limitedHand.thumbDistalR) === JSON.stringify({ rx: -0.05, ry: 0.12, rz: -0.12 }));
 
   const invalid = JSON.parse(JSON.stringify(interpolationScript));
   invalid.tracks.unknownBone = { rotation: [{ beat: 0, value: [0, 0, 0] }] };

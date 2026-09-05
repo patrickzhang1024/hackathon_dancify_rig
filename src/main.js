@@ -7,6 +7,7 @@ DANCE.main = function main() {
   scene.add(rig.root);
 
   const orbit = DANCE.attachOrbit(camera, renderer.domElement, new THREE.Vector3(0, 0.95, 0));
+  DANCE.runtime = { scene, camera, renderer, rig, orbit };
 
   const hud = {
     status: document.getElementById('status'),
@@ -17,6 +18,10 @@ DANCE.main = function main() {
     move: document.getElementById('move'),
     state: document.getElementById('state'),
     dot: document.getElementById('beatDot')
+  };
+  rig.onStatus = (state, message) => {
+    hud.status.textContent = message;
+    hud.status.className = state === 'error' ? 'fail' : (state === 'ready' ? 'ok' : '');
   };
 
   const seq = DANCE.Sequencer(rig, (f) => {
@@ -35,8 +40,7 @@ DANCE.main = function main() {
   const componentCategory = document.getElementById('componentCategory');
   const componentVariant = document.getElementById('componentVariant');
   const componentLabels = {
-    base: 'Base mesh', head: 'Head', eye: 'Eyes', ear: 'Ears', nose: 'Nose',
-    mouth: 'Mouth', teeth: 'Teeth', hand: 'Hands', feet: 'Feet'
+    base: 'Human body', hand: 'Hands', feet: 'Feet'
   };
 
   for (const category in rig.components) {

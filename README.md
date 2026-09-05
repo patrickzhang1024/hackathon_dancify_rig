@@ -1,10 +1,16 @@
 # Detailed Skeleton Choreographer
 
-Offline three.js demo with a MediaPipe-inspired 59-landmark body made from volumetric connections and joint points. Both hands expose three joints per finger, and both feet expose five independently controlled toes.
+Offline three.js demo using the skinned male and female meshes from Human Primitive Legacy. The authored deform armature provides anatomical joint placement, including three joints per finger; MotionScript retains 59 compatible animation channels.
 
-The right panel provides two anthropometric profiles: male at 1.78 m and female at 1.65 m. Segment lengths, shoulder width, hip width, head size, and connector volume are rebuilt for each profile while keeping the same animation tracks.
+The right panel provides the authored male and female profiles with four body-detail levels while keeping the same animation tracks.
 
-The procedural skin also exposes the component catalog from [Human Primitive Legacy](https://github.com/BlenderBoi/Human_Primitive_Legacy): base, head, eyes, ears, nose, mouth, teeth, hands, and feet. The browser implementation reproduces those selectable categories and variation counts with lightweight procedural geometry; the upstream GPL-3.0 `.blend` meshes are not bundled or represented as game-ready assets.
+The component controls use only the source project's Human (Male), Human (Female), Hand, and Feet assets. All eight hand and feet variants remain selectable and follow the corresponding authored bones; separate face-part assets are intentionally excluded. The source project notes that these GPL-3.0 assets are modeling primitives rather than optimized game-ready meshes.
+
+Regenerate the browser assets with Blender 5.2:
+
+```powershell
+& 'D:\blender\blender.exe' --background --factory-startup --python .\tools\export_human_assets.py
+```
 
 ## Run
 
@@ -68,6 +74,7 @@ The previous named-clip action format has been removed. A script now stores edit
 
 - `src/render/motionScript.js`: schema, validation, joint names, interpolation
 - `src/agent/choreographer.js`: deterministic detailed keyframe generation
-- `src/render/character.js`: translucent body and full skeleton hierarchy
+- `src/render/character.js`: Human Primitive skin loading, bone mapping, and component fitting
+- `tools/export_human_assets.py`: reproducible `.blend` to GLB export
 - `src/render/sequencer.js`: beat clock and direct keyframe playback
 - `test/run-tests.js`: schema, coverage, determinism, and interpolation checks
