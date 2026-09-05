@@ -15,8 +15,10 @@ DANCE.createRig = function createRig(initialProfile) {
 
   const DETAIL = 4; // Males and females both use their own detail-4 body.
   const PROFILES = {
-    male: { label: 'Male', height: 1.76 },
-    female: { label: 'Female', height: 1.64 }
+    // showSkin: the female export carries a skinned mesh; the male asset is
+    // still skeleton-only, so its unrigged mesh parts stay hidden.
+    male: { label: 'Male', height: 1.76, showSkin: false },
+    female: { label: 'Female', height: 1.7018, showSkin: true }
   };
   const BONE_MAP = {
     hips: 'spine', spine: 'spine001', spine1: 'spine002', spine2: 'spine003', neck: 'spine005', head: 'spine006',
@@ -72,9 +74,10 @@ DANCE.createRig = function createRig(initialProfile) {
 
   function indexBones(model) {
     const bones = {};
+    const showSkin = PROFILES[profileName].showSkin === true;
     model.traverse((object) => {
       if (object.isBone) bones[object.name] = object;
-      else if (object.isMesh) object.visible = false; // skin removed; skeleton only
+      else if (object.isMesh) object.visible = showSkin;
     });
 
     joints = {};
