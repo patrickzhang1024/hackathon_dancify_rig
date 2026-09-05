@@ -18,7 +18,7 @@ DANCE.selfcheck = function selfcheck(scripts) {
   const diverse = sigs.size >= Math.min(2, scripts.length);
   if (!diverse) ok = false;
 
-  const summary = `${results.filter((r) => r.ok).length}/${results.length} scripts valid, 59 joint tracks each, ${sigs.size} distinct`;
+  const summary = `${results.filter((r) => r.ok).length}/${results.length} scripts valid, 52 joint tracks each, ${sigs.size} distinct`;
   console[ok ? 'log' : 'error']('[selfcheck]', summary, results);
   return { pass: ok, summary, results, distinct: sigs.size };
 };

@@ -5,8 +5,7 @@ window.DANCE = window.DANCE || {};
 DANCE.motionScript = (function () {
   const SIDES = ['L', 'R'];
   const FINGERS = ['Thumb', 'Index', 'Middle', 'Ring', 'Little'];
-  const TOES = ['Big', 'Index', 'Middle', 'Ring', 'Little'];
-  const JOINTS = ['hips', 'spine', 'chest', 'neck', 'head'];
+  const JOINTS = ['hips', 'spine', 'spine1', 'spine2', 'neck', 'head'];
 
   for (const side of SIDES) {
     JOINTS.push('clavicle' + side, 'upperArm' + side, 'lowerArm' + side, 'hand' + side);
@@ -17,8 +16,7 @@ DANCE.motionScript = (function () {
         finger.toLowerCase() + 'Distal' + side
       );
     }
-    JOINTS.push('upperLeg' + side, 'lowerLeg' + side, 'foot' + side);
-    for (const toe of TOES) JOINTS.push('toe' + toe + side);
+    JOINTS.push('upperLeg' + side, 'lowerLeg' + side, 'foot' + side, 'toeBase' + side);
   }
 
   const JOINT_SET = new Set(JOINTS);
@@ -26,7 +24,8 @@ DANCE.motionScript = (function () {
   const JOINT_LIMITS = {
     hips: [[-0.45, 0.45], [-0.7, 0.7], [-0.4, 0.4]],
     spine: [[-0.35, 0.45], [-0.45, 0.45], [-0.35, 0.35]],
-    chest: [[-0.35, 0.45], [-0.55, 0.55], [-0.4, 0.4]],
+    spine1: [[-0.35, 0.45], [-0.5, 0.5], [-0.38, 0.38]],
+    spine2: [[-0.35, 0.45], [-0.55, 0.55], [-0.4, 0.4]],
     neck: [[-0.5, 0.6], [-0.8, 0.8], [-0.45, 0.45]],
     head: [[-0.35, 0.45], [-0.65, 0.65], [-0.4, 0.4]],
     clavicle: [[-0.25, 0.25], [-0.25, 0.25], [-0.35, 0.35]],
@@ -140,5 +139,5 @@ DANCE.motionScript = (function () {
     return { ok: errors.length === 0, errors };
   }
 
-  return { JOINTS, SIDES, FINGERS, TOES, JOINT_LIMITS, basePose, evaluate, validate };
+  return { JOINTS, SIDES, FINGERS, JOINT_LIMITS, basePose, evaluate, validate };
 })();

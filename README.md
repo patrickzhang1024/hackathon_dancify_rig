@@ -4,7 +4,7 @@ Offline three.js demo using the skinned male and female meshes from Human Primit
 
 The right panel provides the authored male and female profiles with four body-detail levels. Every exported body contains its own fixed full deform armature; MotionScript rotates those bones and the skin follows through its authored weights.
 
-The component controls use only the source project's Human (Male), Human (Female), Hand, and Feet assets. All eight hand and feet variants remain selectable and follow the corresponding authored bones; separate face-part assets are intentionally excluded. The source project notes that these GPL-3.0 assets are modeling primitives rather than optimized game-ready meshes.
+The body control switches only the source project's Human (Male) and Human (Female) detail levels. Every body permanently includes Hand 5 and Feet 5: the hands retain their authored finger weights, while the feet use five independently weighted toe bones per side. Separate hand, feet, and face-part selectors are intentionally excluded. The source project notes that these GPL-3.0 assets are modeling primitives rather than optimized game-ready meshes.
 
 Only the human is rendered in the viewport. The armature remains internal: skeleton helpers, support lines, ground geometry, and the grid are not displayed.
 

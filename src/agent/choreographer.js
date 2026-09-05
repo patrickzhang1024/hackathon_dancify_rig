@@ -50,7 +50,8 @@ DANCE.choreographer = (function () {
       ]));
     }
     wave('spine', 2, 0.1, 0, 0.25);
-    wave('chest', 1, 0.28 * direction, Math.PI, 0.25);
+    wave('spine1', 2, 0.12, 0, 0.25);
+    wave('spine2', 1, 0.28 * direction, Math.PI, 0.25);
     wave('neck', 2, 0.06, Math.PI, 0.25);
     wave('head', 1, 0.14 * direction, 0, 0.25);
 
@@ -71,9 +72,7 @@ DANCE.choreographer = (function () {
         wave(name + 'Intermediate' + side, 0, curl * 1.25, 0, 0.5);
         wave(name + 'Distal' + side, 0, curl, 0, 0.5);
       });
-      DANCE.motionScript.TOES.forEach((toe, index) => {
-        wave('toe' + toe + side, 0, 0.16 + index * 0.02, 0, 0.5);
-      });
+      wave('toeBase' + side, 0, 0.16, 0, 0.5);
     }
 
     return {

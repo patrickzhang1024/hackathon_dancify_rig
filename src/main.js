@@ -37,31 +37,6 @@ DANCE.main = function main() {
   seq.setLoop(true);
 
   let scripts = [];
-  const componentCategory = document.getElementById('componentCategory');
-  const componentVariant = document.getElementById('componentVariant');
-  const componentLabels = {
-    base: 'Human body', hand: 'Hands', feet: 'Feet'
-  };
-
-  for (const category in rig.components) {
-    const option = document.createElement('option');
-    option.value = category;
-    option.textContent = componentLabels[category];
-    componentCategory.appendChild(option);
-  }
-
-  function refreshComponentVariants() {
-    const category = componentCategory.value;
-    componentVariant.innerHTML = '';
-    rig.components[category].forEach((label, index) => {
-      const option = document.createElement('option');
-      option.value = String(index);
-      option.textContent = label;
-      option.selected = index === rig.componentSelection[category];
-      componentVariant.appendChild(option);
-    });
-  }
-  refreshComponentVariants();
 
   function generate() {
     const song = DANCE.constants.DEMO_SONG;
@@ -101,11 +76,6 @@ DANCE.main = function main() {
   document.getElementById('stop').addEventListener('click', () => { seq.stop(); setPlayLabel(); });
   document.getElementById('regen').addEventListener('click', () => { seq.stop(); generate(); setPlayLabel(); });
   document.getElementById('loop').addEventListener('change', (e) => seq.setLoop(e.target.checked));
-  componentCategory.addEventListener('change', refreshComponentVariants);
-  componentVariant.addEventListener('change', (event) => {
-    rig.setComponent(componentCategory.value, Number(event.target.value));
-    seq.update(0);
-  });
   document.querySelectorAll('[data-profile]').forEach((button) => {
     button.addEventListener('click', (event) => {
       rig.setProfile(event.currentTarget.dataset.profile);

@@ -15,6 +15,7 @@ $order = @(
   'render/motionScript.js',
   'agent/seeds.js',
   'agent/choreographer.js',
+  'render/skeleton.js',
   'render/character.js',
   'render/orbit.js',
   'render/scene.js',

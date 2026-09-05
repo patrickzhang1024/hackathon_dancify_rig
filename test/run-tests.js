@@ -8,12 +8,12 @@
 
   const validation = DANCE.motionScript.validate(sample);
   assert('generated script satisfies MotionScript v2', validation.ok, validation.errors.join('; '));
-  assert('rig contract exposes exactly 59 joints', DANCE.motionScript.JOINTS.length === 59,
+  assert('rig contract exposes exactly 52 joints', DANCE.motionScript.JOINTS.length === 52,
     String(DANCE.motionScript.JOINTS.length));
   assert('every skeleton joint has an animation track',
     DANCE.motionScript.JOINTS.every((joint) => sample.tracks[joint]));
 
-  const detailJoints = ['thumbDistalL', 'littleIntermediateR', 'toeBigL', 'toeLittleR'];
+  const detailJoints = ['thumbDistalL', 'littleIntermediateR', 'toeBaseL', 'toeBaseR'];
   assert('finger and toe joints have independent keyframes',
     detailJoints.every((joint) => sample.tracks[joint].rotation.length > 2));
 
@@ -40,13 +40,13 @@
         rotation: [{ beat: 0, value: [0, 0, 0], easing: 'linear' }, { beat: 2, value: [0, 2, 0] }],
         position: [{ beat: 0, value: [0, 0, 0], easing: 'linear' }, { beat: 2, value: [2, 0, 0] }]
       },
-      toeLittleR: { rotation: [{ beat: 0, value: [0, 0, 0] }, { beat: 2, value: [1, 0, 0] }] }
+      toeBaseR: { rotation: [{ beat: 0, value: [0, 0, 0] }, { beat: 2, value: [1, 0, 0] }] }
     }
   };
   const midpoint = DANCE.motionScript.evaluate(interpolationScript, 1);
   assert('rotation and root position interpolate at sub-beat time within anatomical limits',
-    midpoint.hips.ry === 0.7 && midpoint.hips.px === 1 && midpoint.toeLittleR.rx === 0.5,
-    JSON.stringify({ hips: midpoint.hips, toe: midpoint.toeLittleR }));
+    midpoint.hips.ry === 0.7 && midpoint.hips.px === 1 && midpoint.toeBaseR.rx === 0.5,
+    JSON.stringify({ hips: midpoint.hips, toe: midpoint.toeBaseR }));
 
   const unsafeScript = JSON.parse(JSON.stringify(interpolationScript));
   unsafeScript.tracks.lowerLegL = { rotation: [{ beat: 0, value: [-2, 1, -1] }] };
