@@ -114,6 +114,24 @@ DANCE.motionScript = (function () {
       return { ok: false, errors };
     }
 
+    if (script.beatTimeline) {
+      if (!Array.isArray(script.beatTimeline) || script.beatTimeline.length < 2) {
+        errors.push('beatTimeline must contain at least 2 entries');
+      } else {
+        let previousBeat = -Infinity;
+        let previousTime = -Infinity;
+        for (const entry of script.beatTimeline) {
+          if (!entry || !Number.isFinite(entry.beat) || !Number.isFinite(entry.timeS) ||
+              entry.beat <= previousBeat || entry.timeS <= previousTime) {
+            errors.push('beatTimeline beat and timeS values must be finite and strictly ordered');
+            break;
+          }
+          previousBeat = entry.beat;
+          previousTime = entry.timeS;
+        }
+      }
+    }
+
     for (const joint in script.tracks) {
       if (!JOINT_SET.has(joint)) errors.push('unknown joint ' + joint);
       const track = script.tracks[joint];

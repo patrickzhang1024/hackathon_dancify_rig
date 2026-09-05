@@ -13,6 +13,7 @@ $dist = Join-Path $root 'dist'
 $order = @(
   'config/constants.js',
   'render/motionScript.js',
+  'render/actionLibrary.js',
   'agent/seeds.js',
   'agent/choreographer.js',
   'render/skeleton.js',

@@ -14,9 +14,14 @@ DANCE.constants = (function () {
     house: ['shuffle', 'house_dance'],
     rnb: ['contemporary', 'lyrical'],
     ballad: ['contemporary', 'lyrical'],
+    reggae: ['reggae_dance', 'street_hiphop'],
+    dancehall: ['reggae_dance', 'street_hiphop'],
     latin: ['freestyle'],
+    folk: ['folk_dance'],
+    world: ['folk_dance'],
     rock: ['freestyle'],
-    classical: ['contemporary']
+    classical: ['ballet', 'contemporary'],
+    ballet: ['ballet']
   };
 
   // Demo song structure. Stands in for Theme 1's CriteriaReport output so the
@@ -39,7 +44,8 @@ DANCE.constants = (function () {
 
   const DANCE_GENRES = [
     'street_hiphop', 'popping', 'house_dance', 'shuffle',
-    'jazz_funk', 'commercial_kpop', 'contemporary', 'lyrical', 'freestyle'
+    'jazz_funk', 'commercial_kpop', 'reggae_dance', 'ballet',
+    'folk_dance', 'contemporary', 'lyrical', 'freestyle'
   ];
 
   return { GENRE_TO_DANCE, DEMO_SONG, DANCE_GENRES };

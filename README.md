@@ -35,9 +35,26 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 
 Then serve `dist/` or open `http://127.0.0.1:8765/dist/index.html`.
 
+## ActionScript choreography
+
+The rig owns reusable action primitives in `src/render/actionLibrary.js`. Choreography schedules them with explicit timing:
+
+```json
+{
+  "startBeat": 16,
+  "action": "stepTouch",
+  "group": "legs",
+  "frequency": 0.5,
+  "repetitions": 4,
+  "intensity": 1.15
+}
+```
+
+`frequency` is cycles per beat, so duration is `repetitions / frequency` beats. A complete agent phrase schedules one action for each group: `hands`, `legs`, `waist`, `neck`, and `arms`. The action library validates full-song coverage and compiles the schedule into MotionScript v2.
+
 ## MotionScript v2
 
-The previous named-clip action format has been removed. A script now stores editable, beat-keyed channels directly:
+MotionScript remains the renderer contract and stores editable, beat-keyed channels directly:
 
 ```json
 {
@@ -77,6 +94,7 @@ The previous named-clip action format has been removed. A script now stores edit
 ## Source layout
 
 - `src/render/motionScript.js`: schema, validation, joint names, interpolation
+- `src/render/actionLibrary.js`: named body-part actions and ActionScript compiler
 - `src/render/skeleton.js`: Mixamo52 rig extraction (skin-tokens `{names, parents}` form) and skeleton rendering
 - `src/agent/choreographer.js`: deterministic detailed keyframe generation
 - `src/render/character.js`: GLB loading, bone indexing, Mixamo52 bone mapping, and skeleton view wiring

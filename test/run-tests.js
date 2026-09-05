@@ -13,6 +13,21 @@
   assert('every skeleton joint has an animation track',
     DANCE.motionScript.JOINTS.every((joint) => sample.tracks[joint]));
 
+  const scheduledActions = DANCE.actionLibrary.GROUPS.map((group) => {
+    const preset = DANCE.actionLibrary.list().find((entry) => entry.group === group);
+    return { startBeat: 0, action: preset.name, group, frequency: 0.5, repetitions: 4, intensity: 1 };
+  });
+  const actionTracks = DANCE.actionLibrary.compile(scheduledActions, 8,
+    Array.from({ length: 81 }, (_, index) => index / 10));
+  assert('rig exposes presets for hands, legs, waist, neck, and arms',
+    DANCE.actionLibrary.GROUPS.every((group) => DANCE.actionLibrary.list().some((entry) => entry.group === group)));
+  assert('scheduled actions compile by frequency and repetition count',
+    DANCE.actionLibrary.validate(scheduledActions, 8, true) === null &&
+    DANCE.motionScript.validate({ version: 2, bpm: 120, totalBeats: 8, tracks: actionTracks }).ok);
+  assert('all five action groups produce visible joint values',
+    ['handL', 'upperLegL', 'hips', 'neck', 'upperArmL'].every((joint) =>
+      actionTracks[joint].rotation.some((key) => key.value.some((value) => Math.abs(value) > 0.001))));
+
   const detailJoints = ['thumbDistalL', 'littleIntermediateR', 'toeBaseL', 'toeBaseR'];
   assert('finger and toe joints have independent keyframes',
     detailJoints.every((joint) => sample.tracks[joint].rotation.length > 2));
