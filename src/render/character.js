@@ -195,12 +195,6 @@ DANCE.createRig = function createRig(initialProfile) {
         root.position.set(0, 0, 0);
         root.add(gltf.scene);
 
-        const skeleton = new T.SkeletonHelper(gltf.scene);
-        skeleton.material.depthTest = false;
-        skeleton.material.transparent = true;
-        skeleton.material.opacity = 0.22;
-        root.add(skeleton);
-
         root.userData.profile = profileName;
         root.userData.height = PROFILES[profileName].height;
         root.userData.dimensions = { floor: 0, crown: PROFILES[profileName].height };

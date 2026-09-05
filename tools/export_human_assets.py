@@ -19,7 +19,11 @@ def export_body(profile, detail, output_dir):
     bpy.ops.wm.open_mainfile(filepath=str(source))
 
     mesh = bpy.data.objects[f"A_{profile}_{detail:02d}_Deform"]
-    armature = next(modifier.object for modifier in mesh.modifiers if modifier.type == "ARMATURE")
+    rigged_mesh = bpy.data.objects[f"A_{profile}_03_Deform"]
+    armature = next(modifier.object for modifier in rigged_mesh.modifiers if modifier.type == "ARMATURE")
+    modifier = next(modifier for modifier in mesh.modifiers if modifier.type == "ARMATURE")
+    modifier.object = armature
+    mesh.parent = armature
     mesh.location = (0, 0, 0)
     mesh.matrix_parent_inverse = Matrix.Identity(4)
     armature.location = (0, 0, 0)

@@ -1,4 +1,4 @@
-// Scene setup: renderer, camera, lights, ground, grid.
+// Scene setup: renderer, camera, and lights.
 window.DANCE = window.DANCE || {};
 
 DANCE.createScene = function createScene(canvas) {
@@ -33,18 +33,6 @@ DANCE.createScene = function createScene(canvas) {
   const rim = new T.DirectionalLight(0x6ea8ff, 0.4);
   rim.position.set(-4, 3, -3);
   scene.add(rim);
-
-  // Ground + grid
-  const ground = new T.Mesh(
-    new T.PlaneGeometry(40, 40),
-    new T.MeshStandardMaterial({ color: 0x171b22, roughness: 1 })
-  );
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add(ground);
-  const grid = new T.GridHelper(40, 40, 0x2a3442, 0x1c232c);
-  grid.position.y = 0.001;
-  scene.add(grid);
 
   function resize() {
     const w = canvas.clientWidth || canvas.parentElement.clientWidth;

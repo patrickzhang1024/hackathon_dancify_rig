@@ -2,9 +2,11 @@
 
 Offline three.js demo using the skinned male and female meshes from Human Primitive Legacy. The authored deform armature provides anatomical joint placement, including three joints per finger; MotionScript retains 59 compatible animation channels.
 
-The right panel provides the authored male and female profiles with four body-detail levels while keeping the same animation tracks.
+The right panel provides the authored male and female profiles with four body-detail levels. Every exported body contains its own fixed full deform armature; MotionScript rotates those bones and the skin follows through its authored weights.
 
 The component controls use only the source project's Human (Male), Human (Female), Hand, and Feet assets. All eight hand and feet variants remain selectable and follow the corresponding authored bones; separate face-part assets are intentionally excluded. The source project notes that these GPL-3.0 assets are modeling primitives rather than optimized game-ready meshes.
+
+Only the human is rendered in the viewport. The armature remains internal: skeleton helpers, support lines, ground geometry, and the grid are not displayed.
 
 Regenerate the browser assets with Blender 5.2:
 
