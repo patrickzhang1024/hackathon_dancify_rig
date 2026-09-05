@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Dance Simulator — Theme 3 Release Test</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main>
+    <div id="viewport">
+      <canvas id="stage"></canvas>
+      <div id="hint">drag to orbit · scroll to zoom</div>
+    </div>
+
+    <aside id="panel">
+      <h1>Dance Simulator <span class="tag">Theme 3</span></h1>
+      <p class="sub">5 random seeds → 5 motion scripts. Pick one and play.</p>
+
+      <div id="status" class="ok">initializing…</div>
+
+      <label class="field">
+        <span>Motion script</span>
+        <select id="scriptSelect"></select>
+      </label>
+      <div id="brief" class="brief">—</div>
+
+      <div class="controls">
+        <button id="play" class="primary">Play</button>
+        <button id="stop">Stop</button>
+        <button id="regen">New 5 Seeds</button>
+        <label class="loop"><input type="checkbox" id="loop" checked /> loop</label>
+      </div>
+
+      <div class="hud">
+        <div><span>beat</span><b id="beat">0</b></div>
+        <div><span>section</span><b id="section">-</b></div>
+        <div><span>move</span><b id="move">-</b></div>
+        <div><span>state</span><b id="state">STAND</b></div>
+        <div class="dotwrap"><span>on-beat</span><i id="beatDot"></i></div>
+      </div>
+
+      <p class="foot">Offline · no build · no API key. three.js r140 + VRM (vendored).</p>
+    </aside>
+  </main>
+
+  <!-- Classic scripts define DANCE.* using window.THREE lazily and DANCE.main
+       (no auto-run). The module below sets window.THREE, loads the VRM, then
+       calls DANCE.main(vrm). -->
+  <script src="./config/constants.js"></script>
+  <script src="./render/moves.js"></script>
+  <script src="./agent/seeds.js"></script>
+  <script src="./agent/choreographer.js"></script>
+  <script src="./render/rigLimits.js"></script>
+  <script src="./render/fingers.js"></script>
+  <script src="./render/springs.js"></script>
+  <script src="./render/character.js"></script>
+  <script src="./render/orbit.js"></script>
+  <script src="./render/scene.js"></script>
+  <script src="./render/sequencer.js"></script>
+  <script src="./render/selfcheck.js"></script>
+  <script src="./main.js"></script>
+
+  <script type="importmap">
+  { "imports": { "three": "../vendor/three.module.js" } }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from '../vendor/jsm/loaders/GLTFLoader.js';
+    import { VRMLoaderPlugin, VRMUtils } from '../vendor/three-vrm.module.js';
+
+    window.THREE = THREE;
+    const status = document.getElementById('status');
+    const setStatus = (msg, cls) => { if (status) { status.textContent = msg; status.className = cls || ''; } };
+
+    function boot(vrm) {
+      try { DANCE.main(vrm); }
+      catch (e) { setStatus('Boot error: ' + (e && e.message || e), 'fail'); console.error(e); }
+    }
+
+    setStatus('loading human model…', 'ok');
+    const loader = new GLTFLoader();
+    loader.register((parser) => new VRMLoaderPlugin(parser));
+    loader.load(
+      '../assets/vrm/character.vrm',
+      (gltf) => {
+        const vrm = gltf.userData.vrm;
+        if (!vrm) { setStatus('VRM missing — using primitive rig', 'fail'); boot(null); return; }
+        VRMUtils.rotateVRM0(vrm); // normalize legacy VRM0 to face +Z (no-op for VRM1)
+        vrm.scene.traverse((o) => {
+          o.frustumCulled = false;
+          if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; }
+        });
+        boot(vrm);
+      },
+      undefined,
+      (err) => {
+        console.warn('VRM load failed:', err);
+        setStatus('VRM load failed — using primitive rig', 'fail');
+        boot(null);
+      }
+    );
+  </script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rig — Test Scripts</title>
+  <style>
+    body { margin: 0; padding: 24px; background: #11151c; color: #e6ebf2;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    h1 { font-size: 18px; margin: 0 0 4px; }
+    p.sub { color: #8b97a7; font-size: 13px; margin: 0 0 18px; }
+    .sum { font-weight: 700; font-size: 15px; padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; }
+    .sum.ok { color: #3ecf8e; background: rgba(62,207,142,0.12); }
+    .sum.fail { color: #ff6b6b; background: rgba(255,107,107,0.12); }
+    .row { font-size: 13px; padding: 6px 10px; border-bottom: 1px solid #1c232c; }
+    .row.ok b { color: #3ecf8e; } .row.fail b { color: #ff6b6b; }
+    .row span { color: #8b97a7; }
+  </style>
+</head>
+<body>
+  <h1>Rig — Random Test Scripts</h1>
+  <p class="sub">Validates the hash-random-string → brief → choreographer pipeline (no THREE, no build).</p>
+  <div id="out">running…</div>
+
+  <!-- Pure-logic pipeline + THREE-free rig modules (moves/rigLimits/fingers/springs). -->
+  <script src="../src/config/constants.js"></script>
+  <script src="../src/render/moves.js"></script>
+  <script src="../src/agent/seeds.js"></script>
+  <script src="../src/agent/choreographer.js"></script>
+  <script src="../src/render/rigLimits.js"></script>
+  <script src="../src/render/fingers.js"></script>
+  <script src="../src/render/springs.js"></script>
+  <script src="./run-tests.js"></script>
+</body>
+</html>

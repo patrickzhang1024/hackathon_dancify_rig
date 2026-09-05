@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>VRM calibration probe</title>
+  <style>
+    body { margin: 0; background: #11151c; color: #bfe3ff; font: 11px/1.35 monospace; }
+    #log { position: fixed; top: 8px; left: 8px; white-space: pre; z-index: 2; text-shadow: 0 1px 2px #000; max-width: 46vw; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <div id="log">loading…</div>
+  <canvas id="c"></canvas>
+
+  <script type="importmap">
+  { "imports": { "three": "../vendor/three.module.js" } }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from '../vendor/jsm/loaders/GLTFLoader.js';
+    import { VRMLoaderPlugin, VRMUtils } from '../vendor/three-vrm.module.js';
+
+    const el = document.getElementById('log');
+    const log = (m) => { el.textContent += '\n' + m; console.log('[calib] ' + m); };
+    const f = (n) => (n >= 0 ? ' ' : '') + n.toFixed(2);
+    const v3 = (v) => `(${f(v.x)},${f(v.y)},${f(v.z)})`;
+
+    let vrm = null, scene, camera, renderer;
+    window.__THREE = THREE;
+
+    // Set a normalized bone rotation (radians). name -> {x,y,z}
+    window.setBone = (name, x, y, z) => {
+      const n = vrm && vrm.humanoid.getNormalizedBoneNode(name);
+      if (n) n.rotation.set(x || 0, y || 0, z || 0);
+    };
+    window.resetPose = () => {
+      if (!vrm) return;
+      for (const n of Object.keys(BONES)) window.setBone(n, 0, 0, 0);
+    };
+    window.faceCamera = (yaw) => { if (vrm) vrm.scene.rotation.y = yaw; };
+
+    const BONES = {
+      hips: 1, spine: 1, chest: 1, upperChest: 1, neck: 1, head: 1,
+      leftUpperArm: 1, leftLowerArm: 1, leftHand: 1,
+      rightUpperArm: 1, rightLowerArm: 1, rightHand: 1,
+      leftUpperLeg: 1, leftLowerLeg: 1, leftFoot: 1,
+      rightUpperLeg: 1, rightLowerLeg: 1, rightFoot: 1
+    };
+
+    function probeRestFrames() {
+      const q = new THREE.Quaternion();
+      const p = new THREE.Vector3();
+      const cp = new THREE.Vector3();
+      for (const name of Object.keys(BONES)) {
+        const node = vrm.humanoid.getNormalizedBoneNode(name);
+        if (!node) { log(name + ': (absent)'); continue; }
+        node.updateWorldMatrix(true, false);
+        node.getWorldQuaternion(q);
+        node.getWorldPosition(p);
+        const ex = new THREE.Vector3(1, 0, 0).applyQuaternion(q);
+        const ey = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
+        const ez = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
+        // direction to first child bone node, if any
+        let dir = '   n/a   ';
+        const child = node.children.find((c) => c.isObject3D);
+        if (child) {
+          child.getWorldPosition(cp);
+          const d = cp.sub(p).normalize();
+          dir = v3(d);
+        }
+        log(`${name.padEnd(13)} X${v3(ex)} Y${v3(ey)} Z${v3(ez)} child${dir}`);
+      }
+    }
+
+    try {
+      log('three r' + THREE.REVISION);
+      const canvas = document.getElementById('c');
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x11151c);
+      camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100);
+      camera.position.set(0, 1.15, 3.0);
+      camera.lookAt(0, 1.0, 0);
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 1.2));
+      const dir = new THREE.DirectionalLight(0xffffff, 1.0);
+      dir.position.set(2, 4, 3);
+      scene.add(dir);
+      const grid = new THREE.GridHelper(4, 8, 0x334455, 0x223344);
+      scene.add(grid);
+      scene.add(new THREE.AxesHelper(0.5)); // X red, Y green, Z blue at origin
+
+      const loader = new GLTFLoader();
+      loader.register((parser) => new VRMLoaderPlugin(parser));
+      loader.load('../assets/vrm/character.vrm', (gltf) => {
+        vrm = gltf.userData.vrm;
+        VRMUtils.rotateVRM0(vrm); // normalize VRM0 to face +Z (no-op for VRM1)
+        scene.add(vrm.scene);
+        window.__vrm = vrm;
+        log('meta: ' + (vrm.meta && (vrm.meta.name || vrm.meta.title)) + '  spec: ' + (vrm.meta && vrm.meta.metaVersion));
+        log('--- rest frames (world basis of each normalized bone) ---');
+        probeRestFrames();
+        log('READY');
+      }, undefined, (err) => log('LOAD ERROR: ' + (err && err.message || err)));
+
+      const clock = new THREE.Clock();
+      function tick() {
+        const dt = clock.getDelta();
+        if (vrm) vrm.update(dt);
+        renderer.render(scene, camera);
+        requestAnimationFrame(tick);
+      }
+      tick();
+    } catch (e) {
+      log('EXCEPTION: ' + (e && e.stack || e));
+    }
+  </script>
+</body>
+</html>
