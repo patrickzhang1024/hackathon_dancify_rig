@@ -1,26 +1,11 @@
 ﻿// Built by rig/build.ps1 鈥?do not edit. Concatenation of rig/src in load order.
 
 /* ---- config/constants.js ---- */
-// Config + taxonomies + body-state machine (Theme 3).
+// Song and choreography taxonomies.
 // Pure JS, no THREE dependency, so it can run in a browser or Node.
 window.DANCE = window.DANCE || {};
 
 DANCE.constants = (function () {
-  const BODY_STATES = ['STAND', 'SIT', 'FLOOR', 'AIR'];
-
-  // Legal state transitions -> transition clip id.
-  // STAND<->SIT, STAND<->FLOOR, SIT<->FLOOR, STAND->AIR->STAND (jump only).
-  const TRANSITIONS = {
-    'STAND->SIT': 'tr_stand_sit',
-    'SIT->STAND': 'tr_sit_stand',
-    'STAND->FLOOR': 'tr_stand_floor',
-    'FLOOR->STAND': 'tr_floor_stand',
-    'SIT->FLOOR': 'tr_sit_floor',
-    'FLOOR->SIT': 'tr_floor_sit',
-    'STAND->AIR': 'tr_jump_up',
-    'AIR->STAND': 'tr_jump_land'
-  };
-
   // genre -> dance_genre subset (from feasibility.md).
   const GENRE_TO_DANCE = {
     pop: ['commercial_kpop', 'jazz_funk'],
@@ -60,277 +45,151 @@ DANCE.constants = (function () {
     'jazz_funk', 'commercial_kpop', 'contemporary', 'lyrical', 'freestyle'
   ];
 
-  return { BODY_STATES, TRANSITIONS, GENRE_TO_DANCE, DEMO_SONG, DANCE_GENRES };
+  return { GENRE_TO_DANCE, DEMO_SONG, DANCE_GENRES };
 })();
 
 
-/* ---- render/moves.js ---- */
-// Move library for Theme 3.
-// Each clip is a PROCEDURAL pose function (no external Mixamo assets needed),
-// so the release test is fully self-contained and offline.
-// ponytail: procedural rig instead of Mixamo glTF clips for a zero-asset release
-// build; swap clip.apply for GLTFLoader AnimationActions later (script format is
-// identical). Only Math is used here so this file is portable to Node.
+/* ---- render/motionScript.js ---- */
+// MotionScript v2: independent beat-keyed rotation channels for every joint.
+// This module is THREE-free so generated scripts can be validated in tests.
 window.DANCE = window.DANCE || {};
 
-DANCE.moves = (function () {
-  const PI = Math.PI;
-  const TAU = PI * 2;
-  const DEG = PI / 180;
+DANCE.motionScript = (function () {
+  const SIDES = ['L', 'R'];
+  const FINGERS = ['Thumb', 'Index', 'Middle', 'Ring', 'Little'];
+  const TOES = ['Big', 'Index', 'Middle', 'Ring', 'Little'];
+  const JOINTS = ['hips', 'spine', 'chest', 'neck', 'head'];
 
-  // Joints animated by poses. hips also carries position offsets (px,py,pz).
-  const JOINTS = [
-    'hips', 'spine', 'chest', 'head',
-    'armL', 'forearmL', 'armR', 'forearmR',
-    'legL', 'shinL', 'legR', 'shinR'
-  ];
-
-  function basePose() {
-    const p = {};
-    for (const j of JOINTS) p[j] = { rx: 0, ry: 0, rz: 0 };
-    p.hips.px = 0; p.hips.py = 0; p.hips.pz = 0;
-    return p;
+  for (const side of SIDES) {
+    JOINTS.push('clavicle' + side, 'upperArm' + side, 'lowerArm' + side, 'hand' + side);
+    for (const finger of FINGERS) {
+      JOINTS.push(
+        finger.toLowerCase() + 'Proximal' + side,
+        finger.toLowerCase() + 'Intermediate' + side,
+        finger.toLowerCase() + 'Distal' + side
+      );
+    }
+    JOINTS.push('upperLeg' + side, 'lowerLeg' + side, 'foot' + side);
+    for (const toe of TOES) JOINTS.push('toe' + toe + side);
   }
 
-  // Oscillators (beat-based, so motion is inherently beat-locked).
-  const beatPulse = (beat) => (1 + Math.cos(beat * TAU)) / 2; // 1 on the beat, 0 off-beat
-  const sway = (beat, cyc = 1) => Math.sin(beat * TAU * cyc);
-
-  // Gain from performance params.
-  const gain = (ctx) => (ctx.intensity ?? 1) * (ctx.amp ?? 1);
-  const mir = (ctx) => (ctx.mirror ? -1 : 1);
-
-  // ---- STAND dance moves --------------------------------------------------
-  const idle = (pose, ctx) => {
-    const g = gain(ctx);
-    pose.hips.ry = sway(ctx.beat, 0.25) * 0.04 * g;
-    pose.spine.rx = 0.03 + Math.sin(ctx.beat * PI) * 0.02;
-    pose.armL.rz = 0.12; pose.armR.rz = -0.12;
-    pose.armL.rx = sway(ctx.beat, 0.25) * 0.05;
-    pose.armR.rx = -sway(ctx.beat, 0.25) * 0.05;
+  const JOINT_SET = new Set(JOINTS);
+  const clamp01 = (value) => Math.max(0, Math.min(1, value));
+  const JOINT_LIMITS = {
+    hips: [[-0.55, 0.55], [-0.8, 0.8], [-0.45, 0.45]],
+    spine: [[-0.45, 0.55], [-0.6, 0.6], [-0.45, 0.45]],
+    chest: [[-0.45, 0.55], [-0.7, 0.7], [-0.5, 0.5]],
+    neck: [[-0.7, 0.7], [-1.35, 1.35], [-0.65, 0.65]],
+    head: [[-0.65, 0.75], [-1.4, 1.4], [-0.7, 0.7]],
+    clavicle: [[-0.35, 0.35], [-0.35, 0.35], [-0.45, 0.45]],
+    upperArm: [[-2.5, 2.5], [-1.6, 1.6], [-2.6, 2.6]],
+    lowerArm: [[-0.15, 2.55], [-0.3, 0.3], [-0.3, 0.3]],
+    hand: [[-1.2, 1.2], [-0.7, 0.7], [-0.65, 0.65]],
+    finger: [[-0.15, 1.75], [-0.25, 0.25], [-0.25, 0.25]],
+    thumb: [[-0.6, 1.35], [-0.75, 0.75], [-0.8, 0.8]],
+    upperLeg: [[-1.9, 1.2], [-0.8, 0.8], [-0.75, 0.75]],
+    lowerLeg: [[-0.1, 2.45], [-0.18, 0.18], [-0.18, 0.18]],
+    foot: [[-0.75, 0.55], [-0.35, 0.35], [-0.45, 0.45]],
+    toe: [[-0.6, 0.9], [-0.15, 0.15], [-0.15, 0.15]]
+  };
+  const easing = {
+    linear: (value) => value,
+    smooth: (value) => value * value * (3 - 2 * value),
+    hold: () => 0
   };
 
-  const bounce = (pose, ctx) => {
-    const g = gain(ctx), dip = beatPulse(ctx.beat);
-    pose.hips.py = -0.09 * dip * g;
-    pose.legL.rx = 0.30 * dip; pose.legR.rx = 0.30 * dip;
-    pose.shinL.rx = -0.55 * dip; pose.shinR.rx = -0.55 * dip;
-    pose.armL.rx = -0.35 * dip * g; pose.armR.rx = -0.35 * dip * g;
-    pose.armL.rz = 0.15; pose.armR.rz = -0.15;
-    pose.chest.ry = sway(ctx.beat, 0.5) * 0.15 * mir(ctx);
-  };
+  function limitKey(joint) {
+    if (joint.startsWith('thumb')) return 'thumb';
+    if (/^(index|middle|ring|little)/.test(joint)) return 'finger';
+    if (joint.startsWith('toe')) return 'toe';
+    return joint.replace(/[LR]$/, '');
+  }
 
-  const step_touch = (pose, ctx) => {
-    const g = gain(ctx), s = sway(ctx.beat, 0.5) * mir(ctx);
-    pose.hips.px = s * 0.14 * g;
-    pose.hips.ry = s * 0.10;
-    pose.chest.rz = -s * 0.08;
-    pose.armL.rx = -0.5 - s * 0.4 * g; pose.armR.rx = -0.5 + s * 0.4 * g;
-    pose.armL.rz = 0.2; pose.armR.rz = -0.2;
-    pose.forearmL.rx = -0.5; pose.forearmR.rx = -0.5;
-  };
+  function clampRotation(joint, rotation) {
+    const limits = JOINT_LIMITS[limitKey(joint)];
+    if (!limits) return rotation;
+    return rotation.map((value, axis) => Math.max(limits[axis][0], Math.min(limits[axis][1], value)));
+  }
 
-  const arm_pump = (pose, ctx) => {
-    const g = gain(ctx), dip = beatPulse(ctx.beat);
-    pose.hips.py = -0.05 * dip;
-    pose.armL.rx = -2.4 + 0.5 * dip; pose.armR.rx = -2.4 + 0.5 * dip;
-    pose.armL.rz = 0.25; pose.armR.rz = -0.25;
-    pose.forearmL.rx = -1.6 * (1 - dip) * g; pose.forearmR.rx = -1.6 * (1 - dip) * g;
-    pose.chest.rx = -0.05;
-  };
+  function basePose() {
+    const pose = {};
+    for (const joint of JOINTS) pose[joint] = { rx: 0, ry: 0, rz: 0 };
+    pose.hips.px = 0;
+    pose.hips.py = 0;
+    pose.hips.pz = 0;
+    return pose;
+  }
 
-  const clap = (pose, ctx) => {
-    const g = gain(ctx), dip = beatPulse(ctx.beat);
-    pose.armL.rx = -1.3; pose.armR.rx = -1.3;
-    pose.armL.rz = 0.55 - 0.45 * dip * g; pose.armR.rz = -0.55 + 0.45 * dip * g;
-    pose.forearmL.rx = -0.5; pose.forearmR.rx = -0.5;
-    pose.hips.py = -0.04 * dip;
-    pose.chest.rx = -0.06;
-  };
+  function sample(keys, beat, size) {
+    if (!keys || keys.length === 0) return new Array(size).fill(0);
+    if (beat <= keys[0].beat) return keys[0].value.slice();
+    const last = keys[keys.length - 1];
+    if (beat >= last.beat) return last.value.slice();
 
-  const wave_hands = (pose, ctx) => {
-    const g = gain(ctx), s = sway(ctx.beat, 0.5);
-    pose.armL.rx = -2.7; pose.armR.rx = -2.7;
-    pose.armL.rz = 0.5 + s * 0.25 * g; pose.armR.rz = -0.5 + s * 0.25 * g;
-    pose.chest.rz = s * 0.12 * g;
-    pose.hips.px = s * 0.06;
-    pose.hips.py = -0.03 * beatPulse(ctx.beat);
-  };
+    let nextIndex = 1;
+    while (keys[nextIndex].beat < beat) nextIndex++;
+    const previous = keys[nextIndex - 1];
+    const next = keys[nextIndex];
+    const progress = clamp01((beat - previous.beat) / (next.beat - previous.beat));
+    const weight = (easing[previous.easing || 'smooth'] || easing.smooth)(progress);
+    return previous.value.map((value, index) => value + (next.value[index] - value) * weight);
+  }
 
-  const twist = (pose, ctx) => {
-    const g = gain(ctx), s = sway(ctx.beat, 0.5) * mir(ctx);
-    pose.chest.ry = s * 0.5 * g;
-    pose.hips.ry = -s * 0.25;
-    pose.armL.rx = -0.6; pose.armR.rx = -0.6;
-    pose.armL.rz = 0.4; pose.armR.rz = -0.4;
-    pose.forearmL.rx = -1.0; pose.forearmR.rx = -1.0;
-    pose.hips.py = -0.03 * beatPulse(ctx.beat);
-  };
+  function evaluate(script, beat) {
+    const pose = basePose();
+    for (const joint in script.tracks) {
+      const track = script.tracks[joint];
+      const rotation = clampRotation(joint, sample(track.rotation, beat, 3));
+      pose[joint].rx = rotation[0];
+      pose[joint].ry = rotation[1];
+      pose[joint].rz = rotation[2];
+      if (joint === 'hips' && track.position) {
+        const position = sample(track.position, beat, 3);
+        pose.hips.px = position[0];
+        pose.hips.py = position[1];
+        pose.hips.pz = position[2];
+      }
+    }
+    return pose;
+  }
 
-  const point_up = (pose, ctx) => {
-    const g = gain(ctx), dip = beatPulse(ctx.beat), s = mir(ctx);
-    pose.hips.py = -0.05 * dip;
-    // one arm points up diagonally, other on hip
-    pose.armR.rx = -2.6 * (s > 0 ? 1 : 0.2); pose.armR.rz = -0.3;
-    pose.armL.rx = -2.6 * (s > 0 ? 0.2 : 1); pose.armL.rz = 0.3;
-    pose.chest.ry = s * 0.2;
-    pose.hips.ry = s * 0.1;
-  };
+  function validate(script) {
+    const errors = [];
+    if (!script || script.version !== 2) errors.push('version must be 2');
+    if (!script || !(script.bpm > 0)) errors.push('bpm must be positive');
+    if (!script || !(script.totalBeats > 0)) errors.push('totalBeats must be positive');
+    if (!script || !script.tracks || typeof script.tracks !== 'object') {
+      errors.push('tracks must be an object');
+      return { ok: false, errors };
+    }
 
-  const spin = (pose, ctx) => {
-    const g = gain(ctx);
-    pose.hips.ry = ctx.t01 * TAU * mir(ctx); // full 360 across the clip
-    pose.armL.rx = -1.4; pose.armR.rx = -1.4;
-    pose.armL.rz = 0.7; pose.armR.rz = -0.7;
-    pose.hips.py = -0.04 * beatPulse(ctx.beat);
-  };
+    for (const joint in script.tracks) {
+      if (!JOINT_SET.has(joint)) errors.push('unknown joint ' + joint);
+      const track = script.tracks[joint];
+      for (const channel of ['rotation', 'position']) {
+        const keys = track[channel];
+        if (channel === 'position' && joint !== 'hips' && keys) {
+          errors.push('position is only valid on hips');
+        }
+        if (!keys) continue;
+        let previousBeat = -Infinity;
+        for (const key of keys) {
+          if (!Number.isFinite(key.beat) || key.beat < previousBeat) {
+            errors.push(joint + '.' + channel + ' keys must be ordered');
+          }
+          if (!Array.isArray(key.value) || key.value.length !== 3 || !key.value.every(Number.isFinite)) {
+            errors.push(joint + '.' + channel + ' values must contain 3 finite numbers');
+          }
+          if (key.easing && !easing[key.easing]) errors.push('unknown easing ' + key.easing);
+          previousBeat = key.beat;
+        }
+      }
+    }
+    return { ok: errors.length === 0, errors };
+  }
 
-  // ---- SIT dance moves ----------------------------------------------------
-  const sitBase = (pose) => {
-    pose.hips.py = -0.5;
-    pose.legL.rx = -1.5; pose.legR.rx = -1.5;
-    pose.shinL.rx = 1.4; pose.shinR.rx = 1.4;
-    pose.legL.rz = 0.15; pose.legR.rz = -0.15;
-    pose.spine.rx = 0.05;
-  };
-  const sit_sway = (pose, ctx) => {
-    sitBase(pose);
-    const s = sway(ctx.beat, 0.5) * mir(ctx);
-    pose.chest.rz = s * 0.2; pose.chest.ry = s * 0.15;
-    pose.armL.rx = -0.4 - s * 0.3; pose.armR.rx = -0.4 + s * 0.3;
-    pose.armL.rz = 0.3; pose.armR.rz = -0.3;
-  };
-  const sit_clap = (pose, ctx) => {
-    sitBase(pose);
-    const dip = beatPulse(ctx.beat);
-    pose.armL.rx = -1.1; pose.armR.rx = -1.1;
-    pose.armL.rz = 0.5 - 0.4 * dip; pose.armR.rz = -0.5 + 0.4 * dip;
-    pose.forearmL.rx = -0.5; pose.forearmR.rx = -0.5;
-    pose.chest.rx = -0.05 * dip;
-  };
-
-  // ---- FLOOR dance moves --------------------------------------------------
-  const floorBase = (pose) => {
-    pose.hips.py = -0.78;
-    pose.spine.rx = -0.5; pose.chest.rx = -0.3;
-    pose.legL.rx = -1.2; pose.legR.rx = -1.2;
-    pose.shinL.rx = 1.6; pose.shinR.rx = 1.6;
-    pose.legL.rz = 0.35; pose.legR.rz = -0.35;
-  };
-  const floor_pose = (pose, ctx) => {
-    floorBase(pose);
-    const s = sway(ctx.beat, 0.25);
-    pose.armR.rx = -1.4; pose.armR.rz = -0.4; // prop
-    pose.armL.rx = -1.9; pose.armL.rz = 0.6 + s * 0.2;
-    pose.chest.ry = s * 0.2;
-  };
-  const floor_wave = (pose, ctx) => {
-    floorBase(pose);
-    const s = sway(ctx.beat, 0.5);
-    pose.armL.rx = -2.0 + s * 0.3; pose.armR.rx = -2.0 - s * 0.3;
-    pose.armL.rz = 0.6; pose.armR.rz = -0.6;
-    pose.head.rz = s * 0.15;
-  };
-
-  // ---- AIR (reached only via jump transition) -----------------------------
-  const air_tuck = (pose, ctx) => {
-    pose.hips.py = 0.5;
-    pose.legL.rx = 0.9; pose.legR.rx = 0.9;
-    pose.shinL.rx = -1.4; pose.shinR.rx = -1.4;
-    pose.armL.rx = -2.4; pose.armR.rx = -2.4;
-    pose.armL.rz = 0.4; pose.armR.rz = -0.4;
-  };
-
-  // ---- Transition clips (drive the state machine) -------------------------
-  const lerp = (a, b, t) => a + (b - a) * t;
-
-  const tr_stand_sit = (pose, ctx) => {
-    const t = ctx.t01;
-    pose.hips.py = lerp(0, -0.5, t);
-    pose.legL.rx = lerp(0, -1.5, t); pose.legR.rx = lerp(0, -1.5, t);
-    pose.shinL.rx = lerp(0, 1.4, t); pose.shinR.rx = lerp(0, 1.4, t);
-    pose.legL.rz = 0.15 * t; pose.legR.rz = -0.15 * t;
-  };
-  const tr_sit_stand = (pose, ctx) => tr_stand_sit(pose, { t01: 1 - ctx.t01 });
-
-  const tr_stand_floor = (pose, ctx) => {
-    const t = ctx.t01;
-    pose.hips.py = lerp(0, -0.78, t);
-    pose.spine.rx = lerp(0, -0.5, t); pose.chest.rx = lerp(0, -0.3, t);
-    pose.legL.rx = lerp(0, -1.2, t); pose.legR.rx = lerp(0, -1.2, t);
-    pose.shinL.rx = lerp(0, 1.6, t); pose.shinR.rx = lerp(0, 1.6, t);
-    pose.legL.rz = 0.35 * t; pose.legR.rz = -0.35 * t;
-  };
-  const tr_floor_stand = (pose, ctx) => tr_stand_floor(pose, { t01: 1 - ctx.t01 });
-
-  const tr_sit_floor = (pose, ctx) => {
-    const t = ctx.t01;
-    pose.hips.py = lerp(-0.5, -0.78, t);
-    pose.spine.rx = lerp(0, -0.5, t); pose.chest.rx = lerp(0, -0.3, t);
-    pose.legL.rx = lerp(-1.5, -1.2, t); pose.legR.rx = lerp(-1.5, -1.2, t);
-    pose.shinL.rx = lerp(1.4, 1.6, t); pose.shinR.rx = lerp(1.4, 1.6, t);
-    pose.legL.rz = lerp(0.15, 0.35, t); pose.legR.rz = lerp(-0.15, -0.35, t);
-  };
-  const tr_floor_sit = (pose, ctx) => tr_sit_floor(pose, { t01: 1 - ctx.t01 });
-
-  const tr_jump_up = (pose, ctx) => {
-    const t = ctx.t01;
-    // crouch then launch
-    const crouch = t < 0.35 ? (t / 0.35) : (1 - (t - 0.35) / 0.65);
-    pose.hips.py = t < 0.35 ? lerp(0, -0.18, t / 0.35) : lerp(-0.18, 0.5, (t - 0.35) / 0.65);
-    pose.legL.rx = 0.5 * crouch; pose.legR.rx = 0.5 * crouch;
-    pose.shinL.rx = -0.9 * crouch; pose.shinR.rx = -0.9 * crouch;
-    pose.armL.rx = lerp(0, -2.2, t); pose.armR.rx = lerp(0, -2.2, t);
-    pose.armL.rz = 0.3; pose.armR.rz = -0.3;
-  };
-  const tr_jump_land = (pose, ctx) => {
-    const t = ctx.t01;
-    // fall then absorb
-    pose.hips.py = t < 0.5 ? lerp(0.5, -0.2, t / 0.5) : lerp(-0.2, 0, (t - 0.5) / 0.5);
-    const absorb = t < 0.5 ? 0.2 : (1 - (t - 0.5) / 0.5);
-    pose.legL.rx = 0.6 * absorb; pose.legR.rx = 0.6 * absorb;
-    pose.shinL.rx = -1.1 * absorb; pose.shinR.rx = -1.1 * absorb;
-    pose.armL.rx = lerp(-2.2, 0, t); pose.armR.rx = lerp(-2.2, 0, t);
-    pose.armL.rz = 0.2; pose.armR.rz = -0.2;
-  };
-
-  // ---- Library ------------------------------------------------------------
-  const list = [
-    // STAND dance
-    { id: 'idle', name: 'Idle Sway', type: 'idle', bodyState: 'STAND', energy: 'low', beats: 4, genres: ['all'], apply: idle },
-    { id: 'bounce', name: 'Two-Step Bounce', type: 'dance', bodyState: 'STAND', energy: 'medium', beats: 2, genres: ['all'], apply: bounce },
-    { id: 'step_touch', name: 'Step Touch', type: 'dance', bodyState: 'STAND', energy: 'medium', beats: 2, genres: ['all', 'commercial_kpop', 'jazz_funk'], apply: step_touch },
-    { id: 'arm_pump', name: 'Arm Pump', type: 'dance', bodyState: 'STAND', energy: 'high', beats: 2, genres: ['shuffle', 'house_dance', 'all'], apply: arm_pump },
-    { id: 'clap', name: 'Clap Groove', type: 'dance', bodyState: 'STAND', energy: 'medium', beats: 2, genres: ['all'], apply: clap },
-    { id: 'wave_hands', name: 'Hands Up', type: 'dance', bodyState: 'STAND', energy: 'high', beats: 4, genres: ['commercial_kpop', 'all'], apply: wave_hands },
-    { id: 'twist', name: 'Body Twist', type: 'dance', bodyState: 'STAND', energy: 'medium', beats: 2, genres: ['popping', 'street_hiphop', 'all'], apply: twist },
-    { id: 'point_up', name: 'Disco Point', type: 'dance', bodyState: 'STAND', energy: 'high', beats: 2, genres: ['jazz_funk', 'all'], apply: point_up },
-    { id: 'spin', name: 'Full Spin', type: 'dance', bodyState: 'STAND', energy: 'high', beats: 2, genres: ['contemporary', 'freestyle', 'all'], apply: spin },
-    // SIT dance
-    { id: 'sit_sway', name: 'Seated Sway', type: 'dance', bodyState: 'SIT', energy: 'low', beats: 4, genres: ['all'], apply: sit_sway },
-    { id: 'sit_clap', name: 'Seated Clap', type: 'dance', bodyState: 'SIT', energy: 'medium', beats: 2, genres: ['all'], apply: sit_clap },
-    // FLOOR dance
-    { id: 'floor_pose', name: 'Floor Prop', type: 'dance', bodyState: 'FLOOR', energy: 'low', beats: 4, genres: ['contemporary', 'lyrical', 'all'], apply: floor_pose },
-    { id: 'floor_wave', name: 'Floor Wave', type: 'dance', bodyState: 'FLOOR', energy: 'medium', beats: 4, genres: ['contemporary', 'all'], apply: floor_wave },
-    // AIR dance (short, mid-jump)
-    { id: 'air_tuck', name: 'Air Tuck', type: 'dance', bodyState: 'AIR', energy: 'high', beats: 1, genres: ['all'], apply: air_tuck },
-    // Transitions
-    { id: 'tr_stand_sit', name: 'Sit Down', type: 'transition', bodyState: 'SIT', fromState: 'STAND', toState: 'SIT', energy: 'low', beats: 2, genres: ['all'], apply: tr_stand_sit },
-    { id: 'tr_sit_stand', name: 'Stand Up', type: 'transition', bodyState: 'STAND', fromState: 'SIT', toState: 'STAND', energy: 'low', beats: 2, genres: ['all'], apply: tr_sit_stand },
-    { id: 'tr_stand_floor', name: 'To Floor', type: 'transition', bodyState: 'FLOOR', fromState: 'STAND', toState: 'FLOOR', energy: 'low', beats: 2, genres: ['all'], apply: tr_stand_floor },
-    { id: 'tr_floor_stand', name: 'Off Floor', type: 'transition', bodyState: 'STAND', fromState: 'FLOOR', toState: 'STAND', energy: 'low', beats: 2, genres: ['all'], apply: tr_floor_stand },
-    { id: 'tr_sit_floor', name: 'Sit To Floor', type: 'transition', bodyState: 'FLOOR', fromState: 'SIT', toState: 'FLOOR', energy: 'low', beats: 2, genres: ['all'], apply: tr_sit_floor },
-    { id: 'tr_floor_sit', name: 'Floor To Sit', type: 'transition', bodyState: 'SIT', fromState: 'FLOOR', toState: 'SIT', energy: 'low', beats: 2, genres: ['all'], apply: tr_floor_sit },
-    { id: 'tr_jump_up', name: 'Jump Up', type: 'transition', bodyState: 'AIR', fromState: 'STAND', toState: 'AIR', energy: 'high', beats: 1, genres: ['all'], apply: tr_jump_up },
-    { id: 'tr_jump_land', name: 'Land', type: 'transition', bodyState: 'STAND', fromState: 'AIR', toState: 'STAND', energy: 'high', beats: 1, genres: ['all'], apply: tr_jump_land }
-  ];
-
-  const byId = {};
-  for (const m of list) byId[m.id] = m;
-
-  return { JOINTS, basePose, list, byId, get: (id) => byId[id] };
+  return { JOINTS, SIDES, FINGERS, TOES, JOINT_LIMITS, basePose, evaluate, validate };
 })();
-
 
 /* ---- agent/seeds.js ---- */
 // Random seeds -> deterministic CreativeBrief (feasibility S4).
@@ -409,533 +268,335 @@ DANCE.seeds = (function () {
 
 
 /* ---- agent/choreographer.js ---- */
-// Deterministic local choreographer (Theme 3 release test).
-// Turns a CreativeBrief + song structure into a MotionControlScript JSON, with a
-// legal body-state machine (every state change bridged by a transition clip).
-// ponytail: local deterministic composer stands in for the Theme 2 LLM call so
-// the release test needs no API key; the output JSON schema is identical.
+// Deterministic MotionScript v2 generator. Output is editable keyframe data;
+// there are no named move clips or hidden procedural animation functions.
 window.DANCE = window.DANCE || {};
 
 DANCE.choreographer = (function () {
-  // Finger gesture per move id (the VRM rig articulates fingers; the primitive
-  // fallback ignores this). Default 'relaxed'.
-  const HANDS = {
-    idle: 'relaxed', bounce: 'relaxed', step_touch: 'relaxed',
-    arm_pump: 'fist', clap: 'open', wave_hands: 'open',
-    twist: 'relaxed', point_up: 'point', spin: 'open',
-    sit_sway: 'relaxed', sit_clap: 'open',
-    floor_pose: 'open', floor_wave: 'open', air_tuck: 'fist'
-  };
-
-  const pickWeighted = (rng, items, weightOf) => {
-    let total = 0;
-    for (const it of items) total += Math.max(0, weightOf(it));
-    if (total <= 0) return items[Math.floor(rng() * items.length)];
-    let r = rng() * total;
-    for (const it of items) {
-      r -= Math.max(0, weightOf(it));
-      if (r <= 0) return it;
-    }
-    return items[items.length - 1];
-  };
-
-  function danceMovesFor(state, brief) {
-    const all = DANCE.moves.list.filter(
-      (m) => (m.type === 'dance' || m.type === 'idle') && m.bodyState === state
-    );
-    const matched = all.filter(
-      (m) => m.genres.includes('all') || m.genres.includes(brief.dance_genre)
-    );
-    return matched.length ? matched : all;
-  }
-
-  const energyRank = { low: 0, medium: 1, high: 2 };
-  const biasRank = { calm: 0, medium: 1, hype: 2 };
-
-  function moveWeight(move, sectionEnergy, brief) {
-    // Prefer moves whose energy matches the section + the brief's energy bias.
-    const target = (energyRank[sectionEnergy] + biasRank[brief.energy_bias]) / 2;
-    const d = Math.abs(energyRank[move.energy] - target);
-    return 1 / (1 + d);
-  }
-
-  // Build a state "excursion" (STAND -> target -> STAND) that fits the budget.
-  function buildExcursion(target, remaining, absBeat, brief, rng) {
-    const C = DANCE.constants;
-    const trIn = DANCE.moves.get(C.TRANSITIONS['STAND->' + target]);
-    const trOut = DANCE.moves.get(C.TRANSITIONS[target + '->STAND']);
-    if (!trIn || !trOut) return null;
-    const danceOpts = danceMovesFor(target, brief);
-    if (!danceOpts.length) return null;
-    const dance = danceOpts[Math.floor(rng() * danceOpts.length)];
-    const cost = trIn.beats + dance.beats + trOut.beats;
-    if (cost > remaining) return null;
-
-    const seq = [];
-    let b = absBeat;
-    for (const clip of [trIn, dance, trOut]) {
-      seq.push(makeInstance(clip, b, clip.beats, brief, rng));
-      b += clip.beats;
-    }
-    return seq;
-  }
-
-  function makeInstance(clip, startBeat, durationBeats, brief, rng) {
-    const facing = brief.spatial_style === 'expansive' ? Math.round((rng() - 0.5) * 60) : 0;
-    const travel = brief.spatial_style === 'traveling' ? Math.round((rng() - 0.5) * 100) / 100 : 0;
-    return {
-      clipId: clip.id,
-      name: clip.name,
-      startBeat,
-      durationBeats,
-      bodyState: clip.bodyState,
-      intensity: Math.round((0.7 + rng() * 0.4) * 100) / 100,
-      ampScale: Math.round((0.85 + rng() * 0.35) * 100) / 100,
-      facingDeg: facing,
-      mirror: rng() < 0.5 ? 1 : 0,
-      travel,
-      hands: HANDS[clip.id] || 'relaxed'
-    };
-  }
+  const key = (beat, value, easing) => ({ beat, value, easing: easing || 'smooth' });
+  const track = (keys) => ({ rotation: keys });
+  const rounded = (value) => Math.round(value * 1000) / 1000;
 
   function compose(brief, song) {
-    const C = DANCE.constants;
     const rng = DANCE.seeds.mulberry32(brief.rngSeed >>> 0);
-    const timeline = [];
-    let absBeat = 0;
+    const totalBeats = song.sections.reduce((sum, section) => sum + section.bars * song.beatsPerBar, 0);
+    const amplitude = 0.75 + rng() * 0.35;
+    const direction = rng() < 0.5 ? -1 : 1;
+    const tracks = {};
+    const markers = [];
 
-    // Excursion probability grows with body_state_bias; complexity shortens moves.
-    const excursionP = 0.12 + brief.body_state_bias * 0.35;
-
+    let sectionStart = 0;
     for (const section of song.sections) {
-      const sectionBeats = section.bars * song.beatsPerBar;
-      const sectionEnd = absBeat + sectionBeats;
-      const moves = [];
-      let state = 'STAND';
+      markers.push({ beat: sectionStart, label: section.label });
+      sectionStart += section.bars * song.beatsPerBar;
+    }
 
-      while (absBeat < sectionEnd) {
-        const remaining = sectionEnd - absBeat;
-
-        // Try a state excursion only from STAND, and only if it fits with room
-        // to also return before the section ends.
-        if (state === 'STAND' && remaining >= 5 && rng() < excursionP) {
-          const targets = ['SIT', 'FLOOR', 'AIR'];
-          const target = targets[Math.floor(rng() * targets.length)];
-          const seq = buildExcursion(target, remaining, absBeat, brief, rng);
-          if (seq) {
-            for (const inst of seq) moves.push(inst);
-            absBeat = seq[seq.length - 1].startBeat + seq[seq.length - 1].durationBeats;
-            continue;
-          }
-        }
-
-        // Otherwise place a STAND dance move (tiled, clamped to section end).
-        const opts = danceMovesFor('STAND', brief);
-        const move = pickWeighted(rng, opts, (m) => moveWeight(m, section.energy, brief));
-        const dur = Math.min(move.beats, remaining);
-        if (dur < 1) break; // sub-beat remainder: leave (should not happen with even bars)
-        moves.push(makeInstance(move, absBeat, dur, brief, rng));
-        absBeat += dur;
+    function wave(joint, axis, scale, offset, frequency) {
+      const keys = [];
+      for (let beat = 0; beat <= totalBeats; beat += 2) {
+        const value = [0, 0, 0];
+        value[axis] = rounded(Math.sin(beat * Math.PI * (frequency || 0.25) + (offset || 0)) * scale * amplitude);
+        keys.push(key(beat, value));
       }
+      tracks[joint] = track(keys);
+    }
 
-      timeline.push({
-        sectionLabel: section.label,
-        energy: section.energy,
-        startBeat: sectionEnd - sectionBeats,
-        endBeat: absBeat,
-        moves
+    function hinge(joint, scale, frequency) {
+      const keys = [];
+      for (let beat = 0; beat <= totalBeats; beat += 2) {
+        const flexion = (1 - Math.cos(beat * Math.PI * (frequency || 0.25))) * 0.5;
+        keys.push(key(beat, [rounded(flexion * scale * amplitude), 0, 0]));
+      }
+      tracks[joint] = track(keys);
+    }
+
+    wave('hips', 1, 0.24 * direction, 0, 0.25);
+    tracks.hips.position = [];
+    for (let beat = 0; beat <= totalBeats; beat += 1) {
+      tracks.hips.position.push(key(beat, [
+        rounded(Math.sin(beat * Math.PI * 0.25) * 0.1 * direction),
+        rounded(-Math.abs(Math.sin(beat * Math.PI)) * 0.055 * amplitude),
+        rounded(Math.sin(beat * Math.PI * 0.125) * 0.045)
+      ]));
+    }
+    wave('spine', 2, 0.1, 0, 0.25);
+    wave('chest', 1, 0.28 * direction, Math.PI, 0.25);
+    wave('neck', 2, 0.06, Math.PI, 0.25);
+    wave('head', 1, 0.14 * direction, 0, 0.25);
+
+    for (const side of DANCE.motionScript.SIDES) {
+      const sign = side === 'L' ? 1 : -1;
+      wave('clavicle' + side, 2, 0.08 * sign, 0, 0.25);
+      wave('upperArm' + side, 0, 1.25 * sign, 0, 0.25);
+      hinge('lowerArm' + side, 0.9, 0.25);
+      wave('hand' + side, 2, 0.35 * sign, 0, 0.5);
+      wave('upperLeg' + side, 0, 0.55 * sign, 0, 0.25);
+      hinge('lowerLeg' + side, 0.72, 0.25);
+      wave('foot' + side, 0, 0.3 * sign, 0, 0.5);
+
+      DANCE.motionScript.FINGERS.forEach((finger, index) => {
+        const name = finger.toLowerCase();
+        const curl = 0.25 + index * 0.08;
+        wave(name + 'Proximal' + side, 0, curl, 0, 0.5);
+        wave(name + 'Intermediate' + side, 0, curl * 1.25, 0, 0.5);
+        wave(name + 'Distal' + side, 0, curl, 0, 0.5);
+      });
+      DANCE.motionScript.TOES.forEach((toe, index) => {
+        wave('toe' + toe + side, 0, 0.16 + index * 0.02, 0, 0.5);
       });
     }
 
     return {
-      seed: brief.seed,
-      brief,
-      title: song.title,
-      bpm: song.bpm,
-      beatsPerBar: song.beatsPerBar,
-      beatGrid: 'quarter',
-      totalBeats: absBeat,
-      timeline
+      version: 2, seed: brief.seed, brief, title: song.title,
+      bpm: song.bpm, beatsPerBar: song.beatsPerBar, totalBeats, markers, tracks
     };
   }
 
-  // Validate: contiguity (no gaps/overlaps), clip existence, and a legal
-  // body-state machine ending back at STAND.
-  function validate(script) {
-    const errors = [];
-    let expected = 0;
-    let state = 'STAND';
-    const flat = script.timeline.flatMap((s) => s.moves);
-
-    if (flat.length === 0) errors.push('empty timeline');
-
-    for (const m of flat) {
-      const clip = DANCE.moves.get(m.clipId);
-      if (!clip) { errors.push(`unknown clip ${m.clipId}`); continue; }
-      if (Math.abs(m.startBeat - expected) > 1e-6) {
-        errors.push(`gap/overlap at beat ${m.startBeat} (expected ${expected})`);
-      }
-      if (clip.type === 'transition') {
-        if (clip.fromState !== state) {
-          errors.push(`illegal transition ${clip.id}: ${state}->${clip.toState}`);
-        }
-        state = clip.toState;
-      } else if (clip.bodyState !== state) {
-        errors.push(`move ${clip.id} needs state ${clip.bodyState} but body is ${state}`);
-      }
-      expected = m.startBeat + m.durationBeats;
-    }
-
-    if (Math.abs(expected - script.totalBeats) > 1e-6) {
-      errors.push(`ends at ${expected}, expected total ${script.totalBeats}`);
-    }
-    if (state !== 'STAND') errors.push(`ends in state ${state}, expected STAND`);
-
-    return { ok: errors.length === 0, errors };
-  }
-
-  return { compose, validate };
-})();
-
-
-/* ---- render/rigLimits.js ---- */
-// Anatomical joint limits — the anti-反关节 (reverse-joint) safety net.
-// Operates on the plain pose object {joint:{rx,ry,rz}} BEFORE it is retargeted
-// onto the VRM humanoid, so it stays THREE-free and unit-testable.
-//
-// Ranges are intentionally generous: they contain every angle the authored moves
-// produce, and only bite when intensity/amp scaling, facing offsets or crossfade
-// blending push a joint past a plausible human range (which is exactly when a
-// knee or elbow would otherwise visibly invert).
-window.DANCE = window.DANCE || {};
-
-DANCE.rigLimits = (function () {
-  // [min, max] radians per axis, in the primitive rig convention
-  // (all limbs rest along -Y, joint frames world-aligned).
-  const L = {
-    hips:      { rx: [-0.6, 0.6],  ry: [-Math.PI, Math.PI], rz: [-0.5, 0.5] }, // ry free: facing + spin
-    spine:     { rx: [-0.5, 0.7],  ry: [-0.6, 0.6],  rz: [-0.4, 0.4] },
-    chest:     { rx: [-0.4, 0.5],  ry: [-0.75, 0.75], rz: [-0.4, 0.4] },
-    head:      { rx: [-0.5, 0.5],  ry: [-0.85, 0.85], rz: [-0.5, 0.5] },
-    // Shoulders: wide cone. Left/right mirror the rz (abduction) range.
-    armL:      { rx: [-2.95, 0.9], ry: [-1.3, 1.3],  rz: [-0.35, 1.9] },
-    armR:      { rx: [-2.95, 0.9], ry: [-1.3, 1.3],  rz: [-1.9, 0.35] },
-    // Elbows: hinge. Cannot hyperextend past straight (small +epsilon only).
-    forearmL:  { rx: [-2.7, 0.08], ry: [-1.3, 1.3],  rz: [-0.4, 0.4] },
-    forearmR:  { rx: [-2.7, 0.08], ry: [-1.3, 1.3],  rz: [-0.4, 0.4] },
-    // Hips (thighs): flexion big, abduction moderate.
-    legL:      { rx: [-1.9, 1.3],  ry: [-0.6, 0.6],  rz: [-0.5, 0.6] },
-    legR:      { rx: [-1.9, 1.3],  ry: [-0.6, 0.6],  rz: [-0.6, 0.5] },
-    // Knees: hinge. Allow deep flex (sit/floor/tuck) but no reverse bend.
-    shinL:     { rx: [-1.7, 2.0],  ry: [-0.4, 0.4],  rz: [-0.35, 0.35] },
-    shinR:     { rx: [-1.7, 2.0],  ry: [-0.4, 0.4],  rz: [-0.35, 0.35] }
-  };
-
-  const clampVal = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
-
-  // Mutates pose in place; returns it. hips position offsets are left untouched.
-  function clamp(pose) {
-    for (const name in L) {
-      const p = pose[name];
-      if (!p) continue;
-      const lim = L[name];
-      if (typeof p.rx === 'number') p.rx = clampVal(p.rx, lim.rx[0], lim.rx[1]);
-      if (typeof p.ry === 'number') p.ry = clampVal(p.ry, lim.ry[0], lim.ry[1]);
-      if (typeof p.rz === 'number') p.rz = clampVal(p.rz, lim.rz[0], lim.rz[1]);
-    }
-    return pose;
-  }
-
-  return { clamp, limits: L };
-})();
-
-
-/* ---- render/fingers.js ---- */
-// Finger control for the VRM hand. Fine finger articulation the primitive rig
-// never had. Presets are pure data (curl amount per finger 0..1); apply() maps
-// them onto the VRM humanoid finger bones.
-//
-// Curl axis: local Z. Verified sign — LEFT curls on negative Z, RIGHT on positive.
-window.DANCE = window.DANCE || {};
-
-DANCE.fingers = (function () {
-  const FINGERS = ['Index', 'Middle', 'Ring', 'Little'];
-  // Per-joint curl gain (radians at curl = 1). Distal knuckles bend most.
-  const JOINT_GAIN = { Proximal: 1.05, Intermediate: 1.5, Distal: 0.9 };
-  const THUMB_GAIN = { Metacarpal: 0.25, Proximal: 0.55, Distal: 0.7 };
-
-  // Curl amount per finger + thumb for each named hand pose.
-  const PRESETS = {
-    relaxed: { Index: 0.28, Middle: 0.32, Ring: 0.38, Little: 0.45, thumb: 0.18 },
-    open:    { Index: 0.02, Middle: 0.02, Ring: 0.02, Little: 0.02, thumb: 0.02 },
-    spread:  { Index: 0.0,  Middle: 0.0,  Ring: 0.0,  Little: 0.0,  thumb: 0.0 },
-    fist:    { Index: 1.0,  Middle: 1.0,  Ring: 1.0,  Little: 1.0,  thumb: 0.7 },
-    point:   { Index: 0.0,  Middle: 1.0,  Ring: 1.0,  Little: 1.0,  thumb: 0.55 }
-  };
-
-  function presetOf(name) {
-    return PRESETS[name] || PRESETS.relaxed;
-  }
-
-  // Apply a preset to both hands of the VRM. `humanoid` = vrm.humanoid.
-  // getNode(name) returns the normalized bone node or null.
-  function apply(humanoid, presetName) {
-    const preset = presetOf(presetName);
-    for (const side of ['left', 'right']) {
-      const sign = side === 'left' ? -1 : 1; // curl direction on local Z
-      // four fingers
-      for (const finger of FINGERS) {
-        const amt = preset[finger] ?? 0;
-        for (const joint in JOINT_GAIN) {
-          const node = humanoid.getNormalizedBoneNode(side + finger + joint);
-          if (node) node.rotation.set(0, 0, sign * JOINT_GAIN[joint] * amt);
-        }
-      }
-      // thumb: curls toward the palm on a blended axis (Z with a little Y splay)
-      const t = preset.thumb ?? 0;
-      for (const joint in THUMB_GAIN) {
-        const node = humanoid.getNormalizedBoneNode(side + 'Thumb' + joint);
-        if (node) node.rotation.set(0, sign * 0.35 * t, sign * THUMB_GAIN[joint] * t);
-      }
-    }
-  }
-
-  return { apply, presetOf, PRESETS };
-})();
-
-
-/* ---- render/springs.js ---- */
-// Lightweight secondary motion — the "发力 / weight" feel on top of the crisp
-// choreography. Two effects, both pure math (THREE-free, testable):
-//   1. Weight shift: when the hips slide sideways, the upper body counter-leans
-//      (centre-of-mass stays over the feet), like a real dancer shifting weight.
-//   2. Follow-through: a slightly under-damped spring drags the chest/head behind
-//      the driven pose, so the upper body overshoots and settles instead of
-//      snapping — momentum, not teleport.
-// Arms and legs are left crisp so the dance stays sharp; the real skirt/hair
-// momentum comes from the VRM spring bones (vrm.update).
-window.DANCE = window.DANCE || {};
-
-DANCE.springs = (function () {
-  // [joint, axis, stiffness, damping]. damping < 2*sqrt(stiffness) => overshoot.
-  const CHANNELS = [
-    ['chest', 'rz', 95, 13],
-    ['chest', 'ry', 95, 13],
-    ['head', 'rz', 120, 15],
-    ['head', 'ry', 120, 15],
-    ['spine', 'rz', 90, 14]
-  ];
-
-  function create() {
-    const state = {}; // key -> {x, v}
-    for (const [j, a] of CHANNELS) state[j + '.' + a] = { x: 0, v: 0 };
-
-    function reset(pose) {
-      for (const [j, a] of CHANNELS) {
-        const s = state[j + '.' + a];
-        s.x = (pose && pose[j] && pose[j][a]) || 0;
-        s.v = 0;
-      }
-    }
-
-    // Mutates pose in place. dt already clamped by the render loop.
-    function update(pose, dt) {
-      if (dt <= 0) return pose;
-      // 1. weight shift: counter-lean the spine against lateral hip travel.
-      const px = (pose.hips && pose.hips.px) || 0;
-      if (pose.spine) pose.spine.rz = (pose.spine.rz || 0) - 0.45 * px;
-
-      // 2. spring follow-through on the secondary channels.
-      for (const [j, a, k, c] of CHANNELS) {
-        if (!pose[j]) continue;
-        const s = state[j + '.' + a];
-        const target = pose[j][a] || 0;
-        s.v += (k * (target - s.x) - c * s.v) * dt;
-        s.x += s.v * dt;
-        pose[j][a] = s.x;
-      }
-      return pose;
-    }
-
-    return { update, reset };
-  }
-
-  return { create, CHANNELS };
+  return { compose, validate: DANCE.motionScript.validate };
 })();
 
 
 /* ---- render/character.js ---- */
-// Procedural humanoid rig (Theme 3 character).
-// A joint hierarchy of Groups + primitive meshes. No skinning / external assets,
-// so poses are driven by setting joint rotations directly.
+// MediaPipe-inspired 3D landmark rig: luminous connection rods and landmark
+// spheres form one volumetric body, avoiding overlapping outer-shell geometry.
 window.DANCE = window.DANCE || {};
 
-DANCE.createRig = function createRig() {
+DANCE.createRig = function createRig(initialProfile) {
   const T = window.THREE;
-  const skin = new T.MeshStandardMaterial({ color: 0xf1c9a5, roughness: 0.8 });
-  const body = new T.MeshStandardMaterial({ color: 0x3a7bd5, roughness: 0.6, metalness: 0.1 });
-  const limb = new T.MeshStandardMaterial({ color: 0x2b5fa8, roughness: 0.6 });
-  const dark = new T.MeshStandardMaterial({ color: 0x1f2933, roughness: 0.7 });
-
   const root = new T.Group();
-  const joints = {};
+  let profileName = initialProfile || 'male';
+  let joints = {};
+  const componentSelection = { base: 1, head: 3, eye: 1, ear: 2, nose: 2, mouth: 0, teeth: 0, hand: 3, feet: 3 };
 
-  function joint(parent, x, y, z) {
-    const g = new T.Group();
-    g.position.set(x, y, z);
-    parent.add(g);
-    return g;
+  const COMPONENTS = {
+    base: ['Detail 1', 'Detail 2', 'Detail 3', 'Detail 4'],
+    head: ['Head 1', 'Head 2', 'Head 3', 'Head 4', 'Head 5'],
+    eye: ['Bulge', 'Dent', 'Sphere'],
+    ear: ['Ear 1', 'Ear 2', 'Ear 3', 'Ear 4', 'Ear 5'],
+    nose: ['Nose 1', 'Nose 2', 'Nose 3', 'Nose 4'],
+    mouth: ['Lips', 'Lips + teeth style 1', 'Lips + teeth style 2'],
+    teeth: ['Style 1', 'Style 2'],
+    hand: Array.from({ length: 8 }, (_, index) => 'Hand ' + (index + 1)),
+    feet: Array.from({ length: 8 }, (_, index) => 'Feet ' + (index + 1))
+  };
+
+  const PROFILES = {
+    male: {
+      label: 'Male', height: 1.78, shoulder: 0.42, hip: 0.31,
+      torso: 0.56, upperArm: 0.32, lowerArm: 0.27,
+      upperLeg: 0.46, lowerLeg: 0.45, head: 0.24, build: 1.05
+    },
+    female: {
+      label: 'Female', height: 1.65, shoulder: 0.36, hip: 0.33,
+      torso: 0.52, upperArm: 0.29, lowerArm: 0.25,
+      upperLeg: 0.43, lowerLeg: 0.415, head: 0.22, build: 0.92
+    }
+  };
+
+  const connectionMaterial = new T.MeshStandardMaterial({
+    color: 0x28d7c7, emissive: 0x073f3b, roughness: 0.32, metalness: 0.08
+  });
+  const landmarkMaterial = new T.MeshStandardMaterial({
+    color: 0xffd166, emissive: 0x5b3900, roughness: 0.25, metalness: 0.05
+  });
+  const coreMaterial = new T.MeshStandardMaterial({
+    color: 0xeafcff, emissive: 0x173f46, roughness: 0.4, transparent: true, opacity: 0.82
+  });
+  const eyeMaterial = new T.MeshStandardMaterial({ color: 0xf6fbff, roughness: 0.2 });
+  const pupilMaterial = new T.MeshStandardMaterial({ color: 0x1b2838, roughness: 0.25 });
+  const mouthMaterial = new T.MeshStandardMaterial({ color: 0xb84b5f, roughness: 0.55 });
+
+  function landmark(name, parent, position, radius) {
+    const node = new T.Group();
+    node.name = name;
+    node.position.set(position[0], position[1], position[2]);
+    const marker = new T.Mesh(new T.SphereGeometry(radius, 12, 8), landmarkMaterial);
+    marker.castShadow = true;
+    node.add(marker);
+    parent.add(node);
+    joints[name] = node;
+    return node;
   }
-  function addLimb(parent, length, radius, mat) {
-    const m = new T.Mesh(new T.CylinderGeometry(radius, radius * 0.85, length, 12), mat);
-    m.position.y = -length / 2;
-    m.castShadow = true;
-    parent.add(m);
-    return m;
-  }
-  function addBox(parent, w, h, d, x, y, z, mat) {
-    const m = new T.Mesh(new T.BoxGeometry(w, h, d), mat);
-    m.position.set(x, y, z);
-    m.castShadow = true;
-    parent.add(m);
-    return m;
-  }
-  function addSphere(parent, r, x, y, z, mat) {
-    const m = new T.Mesh(new T.SphereGeometry(r, 16, 12), mat);
-    m.position.set(x, y, z);
-    m.castShadow = true;
-    parent.add(m);
-    return m;
+
+  function connector(parent, end, startRadius, endRadius, material) {
+    const vector = new T.Vector3(end[0], end[1], end[2]);
+    const mesh = new T.Mesh(
+      new T.CylinderGeometry(endRadius, startRadius, vector.length(), 10, 1, false),
+      material || connectionMaterial
+    );
+    mesh.position.copy(vector).multiplyScalar(0.5);
+    mesh.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), vector.clone().normalize());
+    mesh.castShadow = true;
+    parent.add(mesh);
+    return mesh;
   }
 
-  const restY = 0.9;
+  function build(profile) {
+    root.clear();
+    joints = {};
+    const p = PROFILES[profile];
+    const ankleY = p.height - p.lowerLeg - p.upperLeg - p.torso - p.head;
+    const hipsY = ankleY + p.lowerLeg + p.upperLeg;
+    const spineLength = p.torso * 0.46;
+    const chestLength = p.torso * 0.38;
+    const neckLength = p.torso * 0.16;
+    const headRadius = p.head * 0.5;
+    const shoulderHalf = p.shoulder * 0.5;
+    const hipHalf = p.hip * 0.5;
+    const detailScale = 0.94 + componentSelection.base * 0.04;
+    const limbRadius = 0.028 * p.build * detailScale;
+    const jointRadius = 0.025 * p.build * detailScale;
 
-  // Torso chain
-  joints.hips = joint(root, 0, restY, 0);
-  addBox(joints.hips, 0.26, 0.16, 0.16, 0, 0, 0, body);
-  joints.spine = joint(joints.hips, 0, 0.14, 0);
-  addBox(joints.spine, 0.30, 0.34, 0.18, 0, 0.18, 0, body);
-  joints.chest = joint(joints.spine, 0, 0.36, 0);
-  joints.head = joint(joints.chest, 0, 0.06, 0);
-  addSphere(joints.head, 0.12, 0, 0.13, skin);
+    const hips = landmark('hips', root, [0, hipsY, 0], jointRadius * 1.15);
+    connector(hips, [0, spineLength, 0], 0.055 * p.build, 0.065 * p.build, coreMaterial);
+    const spine = landmark('spine', hips, [0, spineLength, 0], jointRadius);
+    connector(spine, [0, chestLength, 0], 0.065 * p.build, 0.08 * p.build, coreMaterial);
+    const chest = landmark('chest', spine, [0, chestLength, 0], jointRadius * 1.1);
+    connector(chest, [0, neckLength, 0], 0.035 * p.build, 0.028 * p.build, coreMaterial);
+    const neck = landmark('neck', chest, [0, neckLength, 0], jointRadius * 0.8);
+    connector(neck, [0, headRadius, 0], 0.024 * p.build, 0.032 * p.build, coreMaterial);
+    const head = landmark('head', neck, [0, headRadius, 0], jointRadius);
+    const headVolume = new T.Mesh(new T.SphereGeometry(headRadius, 18, 14), coreMaterial);
+    headVolume.position.y = headRadius;
+    const headStyle = componentSelection.head - 2;
+    headVolume.scale.set(0.76 + headStyle * 0.025, 1 - Math.abs(headStyle) * 0.025, 0.82 + headStyle * 0.018);
+    headVolume.castShadow = true;
+    head.add(headVolume);
 
-  // Arms (hang down at rest along -Y)
-  joints.armL = joint(joints.chest, 0.19, 0.0, 0);
-  addLimb(joints.armL, 0.26, 0.045, limb);
-  joints.forearmL = joint(joints.armL, 0, -0.26, 0);
-  addLimb(joints.forearmL, 0.24, 0.04, limb);
-  addSphere(joints.forearmL, 0.05, 0, -0.26, skin);
+    const eyeRadius = headRadius * (0.075 + componentSelection.eye * 0.008);
+    for (const sign of [-1, 1]) {
+      const eye = new T.Mesh(new T.SphereGeometry(eyeRadius, 10, 8), eyeMaterial);
+      eye.position.set(sign * headRadius * 0.28, headRadius * 1.12, headRadius * 0.72);
+      eye.scale.z = componentSelection.eye === 1 ? 0.55 : 0.75;
+      head.add(eye);
+      const pupil = new T.Mesh(new T.SphereGeometry(eyeRadius * 0.42, 8, 6), pupilMaterial);
+      pupil.position.set(0, 0, eyeRadius * 0.72);
+      eye.add(pupil);
 
-  joints.armR = joint(joints.chest, -0.19, 0.0, 0);
-  addLimb(joints.armR, 0.26, 0.045, limb);
-  joints.forearmR = joint(joints.armR, 0, -0.26, 0);
-  addLimb(joints.forearmR, 0.24, 0.04, limb);
-  addSphere(joints.forearmR, 0.05, 0, -0.26, skin);
+      const ear = new T.Mesh(new T.SphereGeometry(headRadius * 0.13, 8, 6), coreMaterial);
+      ear.position.set(sign * headRadius * 0.78, headRadius * 1.02, 0);
+      ear.scale.set(0.45, 0.8 + componentSelection.ear * 0.08, 0.32);
+      head.add(ear);
+    }
+    const nose = new T.Mesh(new T.ConeGeometry(headRadius * (0.07 + componentSelection.nose * 0.012), headRadius * 0.24, 8), coreMaterial);
+    nose.position.set(0, headRadius * 0.93, headRadius * 0.78);
+    nose.rotation.x = Math.PI / 2;
+    head.add(nose);
+    const mouth = new T.Mesh(new T.BoxGeometry(headRadius * 0.32, headRadius * 0.045, headRadius * 0.035), mouthMaterial);
+    mouth.position.set(0, headRadius * 0.68, headRadius * 0.79);
+    mouth.scale.x = 0.88 + componentSelection.mouth * 0.1;
+    head.add(mouth);
+    if (componentSelection.mouth > 0) {
+      const teeth = new T.Mesh(new T.BoxGeometry(headRadius * (0.2 + componentSelection.teeth * 0.035), headRadius * 0.035, headRadius * 0.02), eyeMaterial);
+      teeth.position.set(0, -headRadius * 0.015, headRadius * 0.025);
+      mouth.add(teeth);
+    }
 
-  // Legs
-  joints.legL = joint(joints.hips, 0.10, -0.02, 0);
-  addLimb(joints.legL, 0.40, 0.06, limb);
-  joints.shinL = joint(joints.legL, 0, -0.40, 0);
-  addLimb(joints.shinL, 0.40, 0.05, limb);
-  addBox(joints.shinL, 0.10, 0.06, 0.24, 0, -0.42, 0.06, dark);
+    for (const side of DANCE.motionScript.SIDES) {
+      const sign = side === 'L' ? 1 : -1;
+      connector(chest, [shoulderHalf * 0.58 * sign, 0.025, 0], limbRadius, limbRadius * 0.9);
+      const clavicle = landmark('clavicle' + side, chest, [shoulderHalf * 0.58 * sign, 0.025, 0], jointRadius);
+      connector(clavicle, [shoulderHalf * 0.42 * sign, -0.025, 0], limbRadius * 1.15, limbRadius);
+      const upperArm = landmark('upperArm' + side, clavicle, [shoulderHalf * 0.42 * sign, -0.025, 0], jointRadius * 1.1);
+      connector(upperArm, [0, -p.upperArm, 0], limbRadius * 1.05, limbRadius * 0.82);
+      const lowerArm = landmark('lowerArm' + side, upperArm, [0, -p.upperArm, 0], jointRadius);
+      connector(lowerArm, [0, -p.lowerArm, 0], limbRadius * 0.82, limbRadius * 0.58);
+      const hand = landmark('hand' + side, lowerArm, [0, -p.lowerArm, 0], jointRadius * 0.86);
 
-  joints.legR = joint(joints.hips, -0.10, -0.02, 0);
-  addLimb(joints.legR, 0.40, 0.06, limb);
-  joints.shinR = joint(joints.legR, 0, -0.40, 0);
-  addLimb(joints.shinR, 0.40, 0.05, limb);
-  addBox(joints.shinR, 0.10, 0.06, 0.24, 0, -0.42, 0.06, dark);
+      const handLength = p.height * 0.062;
+      const handWidth = 0.66 + componentSelection.hand * 0.025;
+      const palm = new T.Mesh(
+        new T.BoxGeometry(handLength * handWidth, handLength * 0.62, handLength * (0.19 + componentSelection.hand * 0.012)),
+        coreMaterial
+      );
+      palm.position.set(0, -handLength * 0.31, 0);
+      palm.castShadow = true;
+      hand.add(palm);
+      const fingerOffsets = [0.036, 0.019, 0, -0.019, -0.036];
+      DANCE.motionScript.FINGERS.forEach((finger, index) => {
+        const thumb = finger === 'Thumb';
+        const first = thumb
+          ? [handLength * 0.38 * sign, -handLength * 0.24, handLength * 0.08]
+          : [fingerOffsets[index] * sign, -handLength * 0.62, 0];
+        const lengths = thumb
+          ? [handLength * 0.24, handLength * 0.2, handLength * 0.16]
+          : [handLength * 0.28, handLength * 0.22, handLength * 0.17];
+        const thumbDirections = [
+          [lengths[0] * 0.7 * sign, -lengths[0] * 0.7, lengths[0] * 0.18],
+          [lengths[1] * 0.42 * sign, -lengths[1] * 0.9, lengths[1] * 0.12],
+          [lengths[2] * 0.28 * sign, -lengths[2] * 0.96, 0]
+        ];
+        let parent = hand;
+        ['Proximal', 'Intermediate', 'Distal'].forEach((part, partIndex) => {
+          const offset = partIndex === 0
+            ? first
+            : (thumb ? thumbDirections[partIndex - 1] : [0, -lengths[partIndex - 1], 0]);
+          connector(parent, offset, 0.0055, 0.0045);
+          parent = landmark(finger.toLowerCase() + part + side, parent, offset, 0.007);
+        });
+        connector(parent, thumb ? thumbDirections[2] : [0, -lengths[2], 0], 0.0045, 0.0025);
+      });
 
-  const rest = { x: 0, y: restY, z: 0 };
+      connector(hips, [hipHalf * sign, -0.025, 0], limbRadius * 1.35, limbRadius * 1.2, coreMaterial);
+      const upperLeg = landmark('upperLeg' + side, hips, [hipHalf * sign, -0.025, 0], jointRadius * 1.2);
+      connector(upperLeg, [0, -p.upperLeg, 0], limbRadius * 1.55, limbRadius * 1.1);
+      const lowerLeg = landmark('lowerLeg' + side, upperLeg, [0, -p.upperLeg, 0], jointRadius * 1.1);
+      connector(lowerLeg, [0, -p.lowerLeg, 0], limbRadius * 1.1, limbRadius * 0.72);
+      const foot = landmark('foot' + side, lowerLeg, [0, -p.lowerLeg, 0], jointRadius);
+      const footLength = p.height * (0.132 + componentSelection.feet * 0.004);
+      connector(foot, [0, -0.02, footLength * 0.72], limbRadius * 0.9, limbRadius * 0.62);
+
+      const toeOffsets = [0.04, 0.021, 0, -0.021, -0.04];
+      DANCE.motionScript.TOES.forEach((toe, index) => {
+        const offset = [toeOffsets[index] * sign, -0.02, footLength * (0.72 + (index === 0 ? 0.04 : 0))];
+        connector(foot, offset, 0.0065, 0.005);
+        const toeJoint = landmark('toe' + toe + side, foot, offset, 0.007);
+        connector(toeJoint, [0, 0, footLength * (0.24 - index * 0.018)], 0.005, 0.0025);
+      });
+    }
+
+    root.userData.profile = profile;
+    root.userData.height = p.height;
+    root.userData.dimensions = { floor: 0, crown: hipsY + p.torso + p.head };
+  }
 
   function applyPose(pose) {
-    for (const name of DANCE.moves.JOINTS) {
-      const j = joints[name];
-      const p = pose[name];
-      if (!j || !p) continue;
-      j.rotation.set(p.rx || 0, p.ry || 0, p.rz || 0);
+    for (const name of DANCE.motionScript.JOINTS) {
+      const value = pose[name];
+      if (joints[name] && value) joints[name].rotation.set(value.rx || 0, value.ry || 0, value.rz || 0);
     }
-    const h = pose.hips;
-    joints.hips.position.set(rest.x + (h.px || 0), rest.y + (h.py || 0), rest.z + (h.pz || 0));
+    const value = pose.hips;
+    const restY = joints.hips.userData.restY;
+    joints.hips.position.set(value.px || 0, restY + (value.py || 0), value.pz || 0);
   }
 
-  // Start in idle rest.
-  applyPose(DANCE.moves.basePose());
-
-  return { root, joints, applyPose, restY, isVRM: false, update() {} };
-};
-
-// VRM-backed humanoid rig. Same public interface as createRig (applyPose/update)
-// but drives a real human VRM model with joint limits, fingers and secondary
-// physics. Retarget math verified in test/vrm-calib.html:
-//   Q_local = A_parent * Euler(rx,ry,rz,'XYZ') * A_bone^-1
-// because every normalized VRM bone is world-axis-aligned at rest and the only
-// difference from the primitive rig is that arms rest sideways (±X) instead of
-// hanging (-Y). A = identity everywhere except the arms (a ±90° roll about Z).
-DANCE.createRigVRM = function createRigVRM(vrm) {
-  const T = window.THREE;
-  const h = vrm.humanoid;
-  const spring = DANCE.springs.create();
-
-  const I = new T.Quaternion();
-  const Rz = (deg) => new T.Quaternion().setFromAxisAngle(new T.Vector3(0, 0, 1), deg * Math.PI / 180);
-  const Ll = Rz(90), LlInv = Rz(-90), Rr = Rz(-90), RrInv = Rz(90);
-
-  // primitive joint -> {bone, aPar, aInv}
-  const MAP = [
-    { p: 'hips', b: 'hips', aPar: I, aInv: I, hips: true },
-    { p: 'spine', b: 'spine', aPar: I, aInv: I },
-    { p: 'chest', b: 'chest', aPar: I, aInv: I },
-    { p: 'head', b: 'head', aPar: I, aInv: I },
-    { p: 'armL', b: 'leftUpperArm', aPar: I, aInv: LlInv },
-    { p: 'forearmL', b: 'leftLowerArm', aPar: Ll, aInv: LlInv },
-    { p: 'armR', b: 'rightUpperArm', aPar: I, aInv: RrInv },
-    { p: 'forearmR', b: 'rightLowerArm', aPar: Rr, aInv: RrInv },
-    { p: 'legL', b: 'leftUpperLeg', aPar: I, aInv: I },
-    { p: 'shinL', b: 'leftLowerLeg', aPar: I, aInv: I },
-    { p: 'legR', b: 'rightUpperLeg', aPar: I, aInv: I },
-    { p: 'shinR', b: 'rightLowerLeg', aPar: I, aInv: I }
-  ];
-  for (const m of MAP) m.node = h.getNormalizedBoneNode(m.b);
-
-  const hipsNode = h.getNormalizedBoneNode('hips');
-  const restHips = hipsNode ? hipsNode.position.clone() : new T.Vector3();
-
-  const tmpE = new T.Euler();
-  const qd = new T.Quaternion();
-  const ZERO = { rx: 0, ry: 0, rz: 0 };
-  let curHands = 'relaxed';
-
-  function applyPose(pose, dt) {
-    DANCE.rigLimits.clamp(pose);
-    if (typeof dt === 'number') spring.update(pose, dt);
-
-    for (const m of MAP) {
-      if (!m.node) continue;
-      const p = pose[m.p] || ZERO;
-      tmpE.set(p.rx || 0, p.ry || 0, p.rz || 0, 'XYZ');
-      qd.setFromEuler(tmpE);
-      m.node.quaternion.copy(m.aPar).multiply(qd).multiply(m.aInv);
-      if (m.hips) {
-        m.node.position.set(
-          restHips.x + (p.px || 0),
-          restHips.y + (p.py || 0),
-          restHips.z + (p.pz || 0)
-        );
-      }
-    }
-
-    const hands = pose.hands || 'relaxed';
-    if (hands !== curHands) curHands = hands;
-    DANCE.fingers.apply(h, curHands);
+  function setProfile(nextProfile) {
+    if (!PROFILES[nextProfile]) return;
+    profileName = nextProfile;
+    build(profileName);
+    joints.hips.userData.restY = joints.hips.position.y;
+    applyPose(DANCE.motionScript.basePose());
   }
 
-  applyPose(DANCE.moves.basePose());
+  function setComponent(category, variant) {
+    if (!COMPONENTS[category] || !COMPONENTS[category][variant]) return;
+    componentSelection[category] = variant;
+    setProfile(profileName);
+  }
 
+  setProfile(profileName);
   return {
-    root: vrm.scene,
+    root,
+    profiles: PROFILES,
+    components: COMPONENTS,
+    componentSelection,
+    get joints() { return joints; },
+    get profile() { return profileName; },
+    get height() { return PROFILES[profileName].height; },
+    setProfile,
+    setComponent,
     applyPose,
-    update(dt) { vrm.update(typeof dt === 'number' ? dt : 0); },
-    isVRM: true
+    update() {}
   };
 };
 
@@ -1053,121 +714,64 @@ DANCE.createScene = function createScene(canvas) {
 
 
 /* ---- render/sequencer.js ---- */
-// Beat-synced sequencer: plays a MotionControlScript on the rig.
-// Virtual beat clock (no audio needed for the release test); crossfades between
-// consecutive moves; transition clips carry body-state changes.
+// Beat clock for MotionScript v2 keyframe tracks.
 window.DANCE = window.DANCE || {};
 
 DANCE.Sequencer = function Sequencer(rig, onFrame) {
-  const idleClip = DANCE.moves.get('idle');
   let script = null;
-  let flat = [];
   let beat = 0;
   let playing = false;
   let loop = true;
-  let cursor = 0;
 
-  function applyInstance(inst, atBeat) {
-    const clip = DANCE.moves.get(inst.clipId);
-    const local = atBeat - inst.startBeat;
-    const t01 = Math.max(0, Math.min(1, local / inst.durationBeats));
-    const pose = DANCE.moves.basePose();
-    clip.apply(pose, {
-      beat: atBeat, local, t01,
-      intensity: inst.intensity, amp: inst.ampScale, mirror: inst.mirror
-    });
-    pose.hips.ry += (inst.facingDeg || 0) * Math.PI / 180;
-    pose.hips.pz += (inst.travel || 0) * 0.3;
-    pose.hands = inst.hands || clip.hands || 'relaxed';
-    return pose;
+  function markerAt(atBeat) {
+    if (!script || !script.markers) return '-';
+    let label = '-';
+    for (const marker of script.markers) {
+      if (marker.beat > atBeat) break;
+      label = marker.label;
+    }
+    return label;
   }
 
-  function blend(a, b, w) {
-    const out = DANCE.moves.basePose();
-    for (const j of DANCE.moves.JOINTS) {
-      for (const c of ['rx', 'ry', 'rz']) {
-        out[j][c] = (a[j][c] || 0) * (1 - w) + (b[j][c] || 0) * w;
-      }
-    }
-    for (const c of ['px', 'py', 'pz']) {
-      out.hips[c] = (a.hips[c] || 0) * (1 - w) + (b.hips[c] || 0) * w;
-    }
-    // fingers don't blend numerically; switch to the incoming gesture past halfway
-    out.hands = w >= 0.5 ? (b.hands || 'relaxed') : (a.hands || 'relaxed');
-    return out;
+  function apply() {
+    if (script) rig.applyPose(DANCE.motionScript.evaluate(script, beat));
   }
 
-  function setScript(s) {
-    script = s;
-    flat = s.timeline.flatMap((sec) =>
-      sec.moves.map((m) => Object.assign({ sectionLabel: sec.sectionLabel }, m,
-        { endBeat: m.startBeat + m.durationBeats }))
-    );
-    beat = 0; cursor = 0; playing = false;
-    rig.applyPose(applyInstance(flat[0] || idleInstance(), 0));
+  function emit() {
+    if (!onFrame) return;
+    onFrame({ beat, total: script ? script.totalBeats : 0, section: markerAt(beat),
+      moveName: 'keyframe tracks', bodyState: 'FULL BODY', playing });
+  }
+
+  function setScript(nextScript) {
+    const result = DANCE.motionScript.validate(nextScript);
+    if (!result.ok) throw new Error('Invalid MotionScript: ' + result.errors.join('; '));
+    script = nextScript;
+    beat = 0;
+    playing = false;
+    apply();
     emit();
-  }
-
-  function idleInstance() {
-    return { clipId: 'idle', startBeat: 0, durationBeats: 4, intensity: 1, ampScale: 1, mirror: 0, facingDeg: 0, sectionLabel: '-' };
-  }
-
-  function activeIndex(atBeat) {
-    // advance/rewind cursor to the instance covering atBeat
-    if (!flat.length) return -1;
-    while (cursor > 0 && atBeat < flat[cursor].startBeat) cursor--;
-    while (cursor < flat.length - 1 && atBeat >= flat[cursor].endBeat) cursor++;
-    return cursor;
   }
 
   function update(dt) {
     if (!script) return;
     if (playing) {
-      beat += dt * (script.bpm / 60);
+      beat += dt * script.bpm / 60;
       if (beat >= script.totalBeats) {
-        if (loop) { beat = beat % script.totalBeats; cursor = 0; }
+        if (loop) beat %= script.totalBeats;
         else { beat = script.totalBeats; playing = false; }
       }
     }
-
-    const i = activeIndex(beat);
-    const cur = i >= 0 ? flat[i] : idleInstance();
-    let pose = applyInstance(cur, beat);
-
-    // crossfade into the next move near the boundary
-    const next = flat[i + 1];
-    if (next) {
-      const xf = Math.min(0.5, cur.durationBeats * 0.5);
-      if (beat > cur.endBeat - xf) {
-        const w = (beat - (cur.endBeat - xf)) / xf;
-        pose = blend(pose, applyInstance(next, beat), Math.max(0, Math.min(1, w)));
-      }
-    }
-
-    rig.applyPose(pose, dt);
-    emit(cur);
-  }
-
-  function emit(cur) {
-    if (!onFrame) return;
-    const bpb = script ? script.beatsPerBar : 4;
-    onFrame({
-      beat,
-      bar: Math.floor(beat / bpb),
-      total: script ? script.totalBeats : 0,
-      section: cur ? cur.sectionLabel : '-',
-      moveName: cur ? (cur.name || cur.clipId) : '-',
-      bodyState: cur ? (cur.bodyState || 'STAND') : 'STAND',
-      playing
-    });
+    apply();
+    emit();
   }
 
   return {
     setScript,
-    play() { if (script) { if (beat >= script.totalBeats) { beat = 0; cursor = 0; } playing = true; } },
+    play() { if (script) { if (beat >= script.totalBeats) beat = 0; playing = true; } },
     pause() { playing = false; },
-    stop() { playing = false; beat = 0; cursor = 0; if (script) rig.applyPose(applyInstance(flat[0] || idleInstance(), 0)); emit(); },
-    setLoop(v) { loop = !!v; },
+    stop() { playing = false; beat = 0; apply(); emit(); },
+    setLoop(value) { loop = !!value; },
     update,
     isPlaying() { return playing; }
   };
@@ -1176,8 +780,7 @@ DANCE.Sequencer = function Sequencer(rig, onFrame) {
 
 /* ---- render/selfcheck.js ---- */
 // On-load self-check (ponytail's runnable check).
-// Validates that every generated script is contiguous, uses known clips, obeys
-// the body-state machine, and that the 5 scripts are diverse.
+// Validates each generated keyframe script and verifies deterministic diversity.
 window.DANCE = window.DANCE || {};
 
 DANCE.selfcheck = function selfcheck(scripts) {
@@ -1187,17 +790,16 @@ DANCE.selfcheck = function selfcheck(scripts) {
   for (const s of scripts) {
     const v = DANCE.choreographer.validate(s);
     if (!v.ok) ok = false;
-    results.push({ seed: s.seed, ok: v.ok, errors: v.errors, moves: s.timeline.reduce((n, sec) => n + sec.moves.length, 0) });
+    const complete = DANCE.motionScript.JOINTS.every((joint) => s.tracks[joint]);
+    if (!complete) ok = false;
+    results.push({ seed: s.seed, ok: v.ok && complete, errors: v.errors });
   }
 
-  // Diversity: distinct move-sequence signatures.
-  const sigs = new Set(
-    scripts.map((s) => s.timeline.flatMap((sec) => sec.moves.map((m) => m.clipId)).join(','))
-  );
+  const sigs = new Set(scripts.map((s) => JSON.stringify(s.tracks.hips)));
   const diverse = sigs.size >= Math.min(2, scripts.length);
   if (!diverse) ok = false;
 
-  const summary = `${results.filter((r) => r.ok).length}/${results.length} scripts valid, ${sigs.size} distinct`;
+  const summary = `${results.filter((r) => r.ok).length}/${results.length} scripts valid, 59 joint tracks each, ${sigs.size} distinct`;
   console[ok ? 'log' : 'error']('[selfcheck]', summary, results);
   return { pass: ok, summary, results, distinct: sigs.size };
 };
@@ -1205,13 +807,11 @@ DANCE.selfcheck = function selfcheck(scripts) {
 
 /* ---- main.js ---- */
 // App bootstrap: build scene + rig, generate 5 seeds -> 5 scripts, wire UI.
-// Called by the module loader once THREE + (optionally) the VRM are ready.
-// `vrm` is the loaded @pixiv/three-vrm model, or null to fall back to the
-// zero-asset primitive rig (e.g. when opened over file://).
-DANCE.main = function main(vrm) {
+// Called after the vendored THREE module is ready.
+DANCE.main = function main() {
   const canvas = document.getElementById('stage');
   const { scene, camera, renderer, resize } = DANCE.createScene(canvas);
-  const rig = vrm ? DANCE.createRigVRM(vrm) : DANCE.createRig();
+  const rig = DANCE.createRig();
   scene.add(rig.root);
 
   const orbit = DANCE.attachOrbit(camera, renderer.domElement, new THREE.Vector3(0, 0.95, 0));
@@ -1231,7 +831,7 @@ DANCE.main = function main(vrm) {
     hud.beat.textContent = `${f.beat.toFixed(1)} / ${f.total}`;
     hud.section.textContent = f.section;
     hud.move.textContent = f.moveName;
-    hud.state.textContent = f.bodyState;
+    hud.state.textContent = `${rig.height.toFixed(2)} m`;
     // pulse the beat dot on each beat
     const frac = f.beat - Math.floor(f.beat);
     hud.dot.style.transform = `scale(${1 + (1 - frac) * 0.8})`;
@@ -1240,6 +840,32 @@ DANCE.main = function main(vrm) {
   seq.setLoop(true);
 
   let scripts = [];
+  const componentCategory = document.getElementById('componentCategory');
+  const componentVariant = document.getElementById('componentVariant');
+  const componentLabels = {
+    base: 'Base mesh', head: 'Head', eye: 'Eyes', ear: 'Ears', nose: 'Nose',
+    mouth: 'Mouth', teeth: 'Teeth', hand: 'Hands', feet: 'Feet'
+  };
+
+  for (const category in rig.components) {
+    const option = document.createElement('option');
+    option.value = category;
+    option.textContent = componentLabels[category];
+    componentCategory.appendChild(option);
+  }
+
+  function refreshComponentVariants() {
+    const category = componentCategory.value;
+    componentVariant.innerHTML = '';
+    rig.components[category].forEach((label, index) => {
+      const option = document.createElement('option');
+      option.value = String(index);
+      option.textContent = label;
+      option.selected = index === rig.componentSelection[category];
+      componentVariant.appendChild(option);
+    });
+  }
+  refreshComponentVariants();
 
   function generate() {
     const song = DANCE.constants.DEMO_SONG;
@@ -1255,9 +881,8 @@ DANCE.main = function main(vrm) {
     hud.select.innerHTML = '';
     scripts.forEach((s, i) => {
       const opt = document.createElement('option');
-      const moves = s.timeline.reduce((n, sec) => n + sec.moves.length, 0);
       opt.value = String(i);
-      opt.textContent = `#${i + 1} · ${s.brief.dance_genre} · ${s.brief.energy_bias} · ${moves} moves`;
+      opt.textContent = `#${i + 1} · ${s.brief.dance_genre} · ${Object.keys(s.tracks).length} joint tracks`;
       hud.select.appendChild(opt);
     });
     selectScript(0);
@@ -1280,6 +905,22 @@ DANCE.main = function main(vrm) {
   document.getElementById('stop').addEventListener('click', () => { seq.stop(); setPlayLabel(); });
   document.getElementById('regen').addEventListener('click', () => { seq.stop(); generate(); setPlayLabel(); });
   document.getElementById('loop').addEventListener('change', (e) => seq.setLoop(e.target.checked));
+  componentCategory.addEventListener('change', refreshComponentVariants);
+  componentVariant.addEventListener('change', (event) => {
+    rig.setComponent(componentCategory.value, Number(event.target.value));
+    seq.update(0);
+  });
+  document.querySelectorAll('[data-profile]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      rig.setProfile(event.currentTarget.dataset.profile);
+      document.querySelectorAll('[data-profile]').forEach((option) => {
+        option.setAttribute('aria-pressed', String(option === event.currentTarget));
+      });
+      orbit.target.set(0, rig.height * 0.52, 0);
+      hud.state.textContent = `${rig.height.toFixed(2)} m`;
+      seq.update(0);
+    });
+  });
 
   function setPlayLabel() {
     document.getElementById('play').textContent = seq.isPlaying() ? 'Pause' : 'Play';
@@ -1290,13 +931,14 @@ DANCE.main = function main(vrm) {
   function tick() {
     const dt = Math.min(clock.getDelta(), 0.05);
     seq.update(dt);
-    rig.update(dt); // VRM spring bones (hair/cloth momentum) + normalized->raw
+    rig.update(dt);
     orbit.update();
     renderer.render(scene, camera);
     requestAnimationFrame(tick);
   }
 
   generate();
+  orbit.target.set(0, rig.height * 0.52, 0);
   setPlayLabel();
   tick();
 };

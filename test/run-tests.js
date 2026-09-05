@@ -1,127 +1,70 @@
-// Rig test-script runner — pure logic, no THREE, no build step.
-// Generates many hash-random scripts and asserts the choreographer contract.
+// Browser test runner for the THREE-free MotionScript v2 pipeline.
 (function () {
   const results = [];
   const assert = (name, ok, detail) => results.push({ name, ok: !!ok, detail: detail || '' });
-
   const song = DANCE.constants.DEMO_SONG;
-  const flatMoves = (script) => script.timeline.flatMap((s) => s.moves);
+  const fixedBrief = DANCE.seeds.seedToBrief('motion-v2-fixed');
+  const sample = DANCE.choreographer.compose(fixedBrief, song);
 
-  // 1. Bulk validity + diversity over N random seeds.
-  const N = 50;
-  const seeds = DANCE.seeds.randomStrings(N);
-  let valid = 0;
-  const fails = [];
-  const signatures = new Set();
-  for (const s of seeds) {
-    const script = DANCE.choreographer.compose(DANCE.seeds.seedToBrief(s), song);
-    const v = DANCE.choreographer.validate(script);
-    if (v.ok) valid++; else fails.push({ seed: s, errors: v.errors });
-    signatures.add(flatMoves(script).map((m) => m.clipId).join(','));
-  }
-  assert(`all ${N} random scripts valid`, valid === N, fails.length ? JSON.stringify(fails.slice(0, 2)) : '');
-  assert('scripts are diverse (>1 distinct)', signatures.size > 1, `${signatures.size} distinct`);
+  const validation = DANCE.motionScript.validate(sample);
+  assert('generated script satisfies MotionScript v2', validation.ok, validation.errors.join('; '));
+  assert('rig contract exposes exactly 59 joints', DANCE.motionScript.JOINTS.length === 59,
+    String(DANCE.motionScript.JOINTS.length));
+  assert('every skeleton joint has an animation track',
+    DANCE.motionScript.JOINTS.every((joint) => sample.tracks[joint]));
 
-  // 2. Determinism — same seed yields byte-identical script.
-  const fixed = 'rigtest-fixed-seed';
-  const brief = DANCE.seeds.seedToBrief(fixed);
-  const a = JSON.stringify(DANCE.choreographer.compose(brief, song));
-  const b = JSON.stringify(DANCE.choreographer.compose(DANCE.seeds.seedToBrief(fixed), song));
-  assert('deterministic for a fixed seed', a === b);
+  const detailJoints = ['thumbDistalL', 'littleIntermediateR', 'toeBigL', 'toeLittleR'];
+  assert('finger and toe joints have independent keyframes',
+    detailJoints.every((joint) => sample.tracks[joint].rotation.length > 2));
 
-  // 3. Only known clip ids are referenced.
-  const known = new Set(DANCE.moves.list.map((m) => m.id));
-  const sample = DANCE.choreographer.compose(brief, song);
-  const allKnown = flatMoves(sample).every((m) => known.has(m.clipId));
-  assert('only known clipIds used', allKnown);
+  const neutral = DANCE.motionScript.evaluate(sample, 0);
+  assert('beat zero is a neutral non-intersecting stance',
+    DANCE.motionScript.JOINTS.every((joint) =>
+      ['rx', 'ry', 'rz'].every((axis) => neutral[joint][axis] === 0)) &&
+      ['px', 'py', 'pz'].every((axis) => neutral.hips[axis] === 0));
 
-  // 4. Timeline contiguous: starts at 0, no gaps/overlaps, ends at totalBeats.
-  let exp = 0, contig = true;
-  for (const m of flatMoves(sample)) {
-    if (Math.abs(m.startBeat - exp) > 1e-6) { contig = false; break; }
-    exp = m.startBeat + m.durationBeats;
-  }
-  assert('timeline contiguous', contig && Math.abs(exp - sample.totalBeats) < 1e-6, `end ${exp} / total ${sample.totalBeats}`);
+  const duplicate = DANCE.choreographer.compose(DANCE.seeds.seedToBrief('motion-v2-fixed'), song);
+  assert('generation is deterministic for a fixed seed', JSON.stringify(sample) === JSON.stringify(duplicate));
 
-  // 5. Legal state machine that returns to STAND (validate is source of truth).
-  assert('ends in STAND via legal transitions', DANCE.choreographer.validate(sample).ok);
+  const scripts = DANCE.seeds.randomStrings(20).map((seed) =>
+    DANCE.choreographer.compose(DANCE.seeds.seedToBrief(seed), song));
+  assert('20 random scripts are valid', scripts.every((script) => DANCE.motionScript.validate(script).ok));
+  assert('random scripts are diverse', new Set(scripts.map((script) => JSON.stringify(script.tracks.hips))).size > 1);
 
-  // 6. rigLimits.clamp — the anti-反关节 net. Elbows can't hyperextend and
-  //    out-of-range angles get pulled back into the anatomical window.
-  {
-    const L = DANCE.rigLimits.limits;
-    const pose = {
-      forearmL: { rx: 1.0, ry: 0, rz: 0 },   // way past the +0.08 elbow stop
-      shinR:    { rx: -5.0, ry: 0, rz: 0 },  // past the -1.7 knee reverse limit
-      armR:     { rx: 0, ry: 0, rz: 1.5 },   // past the +0.35 right-shoulder limit
-      head:     { rx: 0.1, ry: 0.2, rz: 0.1 } // in range — must be untouched
-    };
-    const before = JSON.parse(JSON.stringify(pose.head));
-    DANCE.rigLimits.clamp(pose);
-    const inRange = (v, lim) => v >= lim[0] - 1e-9 && v <= lim[1] + 1e-9;
-    const ok =
-      pose.forearmL.rx === L.forearmL.rx[1] &&      // clamped to max (no hyperextend)
-      pose.shinR.rx === L.shinR.rx[0] &&            // clamped to min (no reverse knee)
-      pose.armR.rz === L.armR.rz[1] &&              // clamped to max
-      inRange(pose.forearmL.rx, L.forearmL.rx) &&
-      JSON.stringify(pose.head) === JSON.stringify(before); // in-range left alone
-    assert('rigLimits clamps reverse joints, keeps in-range angles', ok,
-      `forearmL.rx=${pose.forearmL.rx} shinR.rx=${pose.shinR.rx}`);
-  }
-
-  // 7. fingers presets — sign + gain mapping onto a mock humanoid.
-  //    LEFT curls on -Z, RIGHT on +Z; a fist curls hard, spread is ~0.
-  {
-    const rec = {}; // boneName -> {x,y,z}
-    const mockHumanoid = {
-      getNormalizedBoneNode(name) {
-        const node = { rotation: { set(x, y, z) { rec[name] = { x, y, z }; } } };
-        return node;
-      }
-    };
-    DANCE.fingers.apply(mockHumanoid, 'fist');
-    const li = rec['leftIndexProximal'], ri = rec['rightIndexProximal'];
-    const fistOk = li && ri && li.z < -0.5 && ri.z > 0.5; // opposite signs, strong curl
-
-    DANCE.fingers.apply(mockHumanoid, 'spread');
-    const spreadOk = Math.abs(rec['leftIndexProximal'].z) < 1e-6;
-
-    const knownPreset = DANCE.fingers.presetOf('point').Index === 0 &&
-      DANCE.fingers.presetOf('nonexistent') === DANCE.fingers.PRESETS.relaxed;
-    assert('fingers: fist curls (L -Z / R +Z), spread ~0, presets resolve',
-      fistOk && spreadOk && knownPreset,
-      li ? `L.z=${li.z.toFixed(2)} R.z=${ri.z.toFixed(2)}` : 'no bone recorded');
-  }
-
-  // 8. springs follow-through — bounded, converges to the target, no NaN/blowup.
-  {
-    const spring = DANCE.springs.create();
-    let bad = false;
-    // Hold a constant chest target; the spring must settle near it, not explode.
-    for (let i = 0; i < 2000; i++) {
-      const pose = { hips: { px: 0 }, chest: { rz: 0.3, ry: 0 }, head: { rz: 0, ry: 0 }, spine: { rz: 0 } };
-      spring.update(pose, 1 / 120);
-      const v = pose.chest.rz;
-      if (!isFinite(v) || Math.abs(v) > 5) { bad = true; break; }
+  const interpolationScript = {
+    version: 2,
+    bpm: 120,
+    totalBeats: 2,
+    tracks: {
+      hips: {
+        rotation: [{ beat: 0, value: [0, 0, 0], easing: 'linear' }, { beat: 2, value: [0, 2, 0] }],
+        position: [{ beat: 0, value: [0, 0, 0], easing: 'linear' }, { beat: 2, value: [2, 0, 0] }]
+      },
+      toeLittleR: { rotation: [{ beat: 0, value: [0, 0, 0] }, { beat: 2, value: [1, 0, 0] }] }
     }
-    // final settle check
-    let last = 0;
-    for (let i = 0; i < 3; i++) {
-      const pose = { hips: { px: 0 }, chest: { rz: 0.3, ry: 0 }, head: { rz: 0, ry: 0 }, spine: { rz: 0 } };
-      spring.update(pose, 1 / 120);
-      last = pose.chest.rz;
-    }
-    assert('springs converge & stay bounded (no blowup)', !bad && Math.abs(last - 0.3) < 0.02,
-      `settled chest.rz=${last.toFixed(4)}`);
-  }
+  };
+  const midpoint = DANCE.motionScript.evaluate(interpolationScript, 1);
+  assert('rotation and root position interpolate at sub-beat time within anatomical limits',
+    midpoint.hips.ry === 0.8 && midpoint.hips.px === 1 && midpoint.toeLittleR.rx === 0.5,
+    JSON.stringify({ hips: midpoint.hips, toe: midpoint.toeLittleR }));
 
-  // Render + console.
-  const passN = results.filter((r) => r.ok).length;
-  const pass = passN === results.length;
+  const unsafeScript = JSON.parse(JSON.stringify(interpolationScript));
+  unsafeScript.tracks.lowerLegL = { rotation: [{ beat: 0, value: [-2, 1, -1] }] };
+  const bounded = DANCE.motionScript.evaluate(unsafeScript, 0).lowerLegL;
+  assert('anatomical limits prevent knee hyperextension and lateral twisting',
+    bounded.rx === -0.1 && bounded.ry === 0.18 && bounded.rz === -0.18,
+    JSON.stringify(bounded));
+
+  const invalid = JSON.parse(JSON.stringify(interpolationScript));
+  invalid.tracks.unknownBone = { rotation: [{ beat: 0, value: [0, 0, 0] }] };
+  assert('unknown joints are rejected', !DANCE.motionScript.validate(invalid).ok);
+
+  const passCount = results.filter((result) => result.ok).length;
+  const pass = passCount === results.length;
   document.getElementById('out').innerHTML =
-    `<div class="sum ${pass ? 'ok' : 'fail'}">${pass ? 'PASS' : 'FAIL'} — ${passN}/${results.length} checks</div>` +
-    results.map((r) =>
-      `<div class="row ${r.ok ? 'ok' : 'fail'}"><b>${r.ok ? '\u2713' : '\u2717'}</b> ${r.name}` +
-      `${r.detail ? ` <span>— ${r.detail}</span>` : ''}</div>`).join('');
-  (pass ? console.log : console.error)('[rig-test]', `${passN}/${results.length}`, results);
+    `<div class="sum ${pass ? 'ok' : 'fail'}">${pass ? 'PASS' : 'FAIL'} — ${passCount}/${results.length} checks</div>` +
+    results.map((result) =>
+      `<div class="row ${result.ok ? 'ok' : 'fail'}"><b>${result.ok ? '\u2713' : '\u2717'}</b> ${result.name}` +
+      `${result.detail ? ` <span>— ${result.detail}</span>` : ''}</div>`).join('');
+  (pass ? console.log : console.error)('[motion-script-test]', `${passCount}/${results.length}`, results);
 })();

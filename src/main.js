@@ -1,11 +1,9 @@
 // App bootstrap: build scene + rig, generate 5 seeds -> 5 scripts, wire UI.
-// Called by the module loader once THREE + (optionally) the VRM are ready.
-// `vrm` is the loaded @pixiv/three-vrm model, or null to fall back to the
-// zero-asset primitive rig (e.g. when opened over file://).
-DANCE.main = function main(vrm) {
+// Called after the vendored THREE module is ready.
+DANCE.main = function main() {
   const canvas = document.getElementById('stage');
   const { scene, camera, renderer, resize } = DANCE.createScene(canvas);
-  const rig = vrm ? DANCE.createRigVRM(vrm) : DANCE.createRig();
+  const rig = DANCE.createRig();
   scene.add(rig.root);
 
   const orbit = DANCE.attachOrbit(camera, renderer.domElement, new THREE.Vector3(0, 0.95, 0));
@@ -25,7 +23,7 @@ DANCE.main = function main(vrm) {
     hud.beat.textContent = `${f.beat.toFixed(1)} / ${f.total}`;
     hud.section.textContent = f.section;
     hud.move.textContent = f.moveName;
-    hud.state.textContent = f.bodyState;
+    hud.state.textContent = `${rig.height.toFixed(2)} m`;
     // pulse the beat dot on each beat
     const frac = f.beat - Math.floor(f.beat);
     hud.dot.style.transform = `scale(${1 + (1 - frac) * 0.8})`;
@@ -34,6 +32,32 @@ DANCE.main = function main(vrm) {
   seq.setLoop(true);
 
   let scripts = [];
+  const componentCategory = document.getElementById('componentCategory');
+  const componentVariant = document.getElementById('componentVariant');
+  const componentLabels = {
+    base: 'Base mesh', head: 'Head', eye: 'Eyes', ear: 'Ears', nose: 'Nose',
+    mouth: 'Mouth', teeth: 'Teeth', hand: 'Hands', feet: 'Feet'
+  };
+
+  for (const category in rig.components) {
+    const option = document.createElement('option');
+    option.value = category;
+    option.textContent = componentLabels[category];
+    componentCategory.appendChild(option);
+  }
+
+  function refreshComponentVariants() {
+    const category = componentCategory.value;
+    componentVariant.innerHTML = '';
+    rig.components[category].forEach((label, index) => {
+      const option = document.createElement('option');
+      option.value = String(index);
+      option.textContent = label;
+      option.selected = index === rig.componentSelection[category];
+      componentVariant.appendChild(option);
+    });
+  }
+  refreshComponentVariants();
 
   function generate() {
     const song = DANCE.constants.DEMO_SONG;
@@ -49,9 +73,8 @@ DANCE.main = function main(vrm) {
     hud.select.innerHTML = '';
     scripts.forEach((s, i) => {
       const opt = document.createElement('option');
-      const moves = s.timeline.reduce((n, sec) => n + sec.moves.length, 0);
       opt.value = String(i);
-      opt.textContent = `#${i + 1} · ${s.brief.dance_genre} · ${s.brief.energy_bias} · ${moves} moves`;
+      opt.textContent = `#${i + 1} · ${s.brief.dance_genre} · ${Object.keys(s.tracks).length} joint tracks`;
       hud.select.appendChild(opt);
     });
     selectScript(0);
@@ -74,6 +97,22 @@ DANCE.main = function main(vrm) {
   document.getElementById('stop').addEventListener('click', () => { seq.stop(); setPlayLabel(); });
   document.getElementById('regen').addEventListener('click', () => { seq.stop(); generate(); setPlayLabel(); });
   document.getElementById('loop').addEventListener('change', (e) => seq.setLoop(e.target.checked));
+  componentCategory.addEventListener('change', refreshComponentVariants);
+  componentVariant.addEventListener('change', (event) => {
+    rig.setComponent(componentCategory.value, Number(event.target.value));
+    seq.update(0);
+  });
+  document.querySelectorAll('[data-profile]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      rig.setProfile(event.currentTarget.dataset.profile);
+      document.querySelectorAll('[data-profile]').forEach((option) => {
+        option.setAttribute('aria-pressed', String(option === event.currentTarget));
+      });
+      orbit.target.set(0, rig.height * 0.52, 0);
+      hud.state.textContent = `${rig.height.toFixed(2)} m`;
+      seq.update(0);
+    });
+  });
 
   function setPlayLabel() {
     document.getElementById('play').textContent = seq.isPlaying() ? 'Pause' : 'Play';
@@ -84,13 +123,14 @@ DANCE.main = function main(vrm) {
   function tick() {
     const dt = Math.min(clock.getDelta(), 0.05);
     seq.update(dt);
-    rig.update(dt); // VRM spring bones (hair/cloth momentum) + normalized->raw
+    rig.update(dt);
     orbit.update();
     renderer.render(scene, camera);
     requestAnimationFrame(tick);
   }
 
   generate();
+  orbit.target.set(0, rig.height * 0.52, 0);
   setPlayLabel();
   tick();
 };

@@ -1,99 +1,73 @@
-# Dance Simulator — Theme 3 Release Test
+# Detailed Skeleton Choreographer
 
-Zero-build, fully offline demo of **Theme 3 (three.js human model + script control)**
-from [../plan/tech-stack.md](../plan/tech-stack.md). Generates **5 random seeds → 5
-distinct motion scripts**; pick one and play it on a beat-synced **VRM humanoid** with
-joint limits (no reverse joints), per-move finger gestures, and lightweight
-weight-shift / follow-through physics.
+Offline three.js demo with a MediaPipe-inspired 59-landmark body made from volumetric connections and joint points. Both hands expose three joints per finger, and both feet expose five independently controlled toes.
+
+The right panel provides two anthropometric profiles: male at 1.78 m and female at 1.65 m. Segment lengths, shoulder width, hip width, head size, and connector volume are rebuilt for each profile while keeping the same animation tracks.
+
+The procedural skin also exposes the component catalog from [Human Primitive Legacy](https://github.com/BlenderBoi/Human_Primitive_Legacy): base, head, eyes, ears, nose, mouth, teeth, hands, and feet. The browser implementation reproduces those selectable categories and variation counts with lightweight procedural geometry; the upstream GPL-3.0 `.blend` meshes are not bundled or represented as game-ready assets.
 
 ## Run
 
-The app loads a `.vrm` model with `GLTFLoader`, which browsers block over `file://`.
-**Serve the folder over http** and open the printed URL:
+Serve the repository over HTTP and open the source app:
 
 ```powershell
-# from rig/  (source/dev)          or   rig/dist/  (compiled/release)
-python -m http.server 8080 --bind 127.0.0.1
-# then open http://127.0.0.1:8080/src/index.html   (dev)
-#        or http://127.0.0.1:8080/index.html        (dist)
+py -3 -m http.server 8765 --bind 127.0.0.1
 ```
 
-Any static server works (`python -m http.server`, `npx serve`, VS Code Live Server…).
-No npm, no bundler, no API key. If the VRM fails to load, the app automatically falls
-back to the zero-asset primitive rig so it still runs.
+- App: `http://127.0.0.1:8765/src/index.html`
+- Tests: `http://127.0.0.1:8765/test/test.html`
 
-> On Windows, port 8000 is often reserved (`WinError 10013`); pick another port.
+Build the distributable version with:
 
-## Build & test
-
-- **Build** the compiled bundle: run [build.ps1](build.ps1):
-  `powershell -ExecutionPolicy Bypass -File .\build.ps1`.
-  It concatenates the classic `src/*.js` (in load order) into `dist/app.bundle.js`,
-  copies `styles.css`, the vendored ES-module deps (`three.module.js`,
-  `three-vrm.module.js`, `jsm/loaders/GLTFLoader.js`) and `assets/vrm/character.vrm`,
-  and writes a `dist/index.html` that keeps the ES-module VRM boot block.
-- **Test** the logic: serve the folder and open `test/test.html`. It runs the
-  hash-random-string → brief → choreographer pipeline over 50 seeds **and** the
-  THREE-free rig modules — asserting validity, determinism, contiguity, the body-state
-  machine, joint-limit clamping, finger presets, and spring stability (no THREE, no build).
-
-## What it does
-
-- **5 seeds → 5 scripts**: `crypto` random strings → deterministic `CreativeBrief` →
-  a local choreographer composes a `MotionControlScript` JSON over a demo 120 BPM song.
-- **Select & play**: dropdown picks a script; Play / Pause / Stop / loop.
-- **Beat-synced playback**: a virtual beat clock drives the rig; moves are inherently
-  beat-locked; consecutive moves crossfade.
-- **VRM humanoid**: poses are authored on a compact primitive joint set, clamped to
-  anatomical limits, then retargeted onto the VRM humanoid bones. Fingers get a
-  per-move gesture (relaxed / open / fist / point); the chest/head/spine carry a small
-  spring follow-through and weight shift; VRM spring bones add hair/cloth momentum.
-- **Body-state machine**: STAND / SIT / FLOOR / AIR — every state change is bridged by a
-  transition clip (validated on load; see the "Self-check" line in the panel).
-
-## Structure
-
-```
-rig/
-  build.ps1                    concat src → dist (the "compile" step)
-  README.md
-  vendor/                      offline deps (ES modules unless noted)
-    three.module.js            three.js r140 (ESM)
-    three.min.js               three.js r140 (UMD) — legacy/fallback
-    three-vrm.module.js        @pixiv/three-vrm v3 (ESM, MIT)
-    jsm/loaders/GLTFLoader.js  three r140 GLTFLoader (ESM)
-  assets/vrm/character.vrm     the humanoid model (VRM 1.0)
-  src/                         source area
-    index.html · styles.css
-    config/constants.js        body-state machine, genre→dance map, demo song
-    render/moves.js            procedural move library (dance + transition clips)
-    agent/seeds.js             random strings + hash PRNG → CreativeBrief
-    agent/choreographer.js     compose() + validate() + per-move hand gesture (no LLM)
-    render/rigLimits.js        anatomical joint clamp (anti reverse-joint, THREE-free)
-    render/fingers.js          finger presets + apply() onto VRM hand bones
-    render/springs.js          weight-shift + follow-through physics (THREE-free)
-    render/character.js        primitive rig + createRigVRM() retarget onto the VRM
-    render/orbit.js            minimal orbit camera
-    render/scene.js            renderer / lights / ground
-    render/sequencer.js        beat clock, crossfade, state playback
-    render/selfcheck.js        on-load validation of all 5 scripts
-    main.js                    bootstrap + UI wiring (DANCE.main, no auto-run)
-  dist/                        compiled area (generated by build.ps1)
-    index.html · styles.css · app.bundle.js · vendor/ · assets/vrm/character.vrm
-  test/                        test area
-    test.html · run-tests.js   pipeline + rig-module assertions (no THREE, no build)
-    vrm-check.html             VRM/three compat harness
-    vrm-calib.html             retarget calibration probe
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
-## Notes / next steps
+Then serve `dist/` or open `http://127.0.0.1:8765/dist/index.html`.
 
-- Motion is authored **procedurally** on a compact joint set, then clamped and
-  retargeted onto the VRM — the `MotionControlScript` format is unchanged, so the
-  same scripts could later drive glTF `AnimationAction`s instead.
-- The choreographer here is deterministic/local. Theme 2 replaces it with the openDev
-  LLM call (BYO-key) that emits the same schema.
-- The rig is fully open-source / free: three.js and @pixiv/three-vrm are MIT; the VRM
-  asset is a VRM sample model. No Adobe/Mixamo, no login, no API key.
-- For go-live, migrate to the Vite build in [../plan/tech-stack.md](../plan/tech-stack.md)
-  and apply its licensing review.
+## MotionScript v2
+
+The previous named-clip action format has been removed. A script now stores editable, beat-keyed channels directly:
+
+```json
+{
+  "version": 2,
+  "bpm": 120,
+  "totalBeats": 8,
+  "markers": [{ "beat": 0, "label": "intro" }],
+  "tracks": {
+    "hips": {
+      "position": [
+        { "beat": 0, "value": [0, 0, 0], "easing": "smooth" }
+      ],
+      "rotation": [
+        { "beat": 0, "value": [0, 0, 0], "easing": "smooth" }
+      ]
+    },
+    "indexDistalL": {
+      "rotation": [
+        { "beat": 0, "value": [0, 0, 0], "easing": "linear" },
+        { "beat": 0.5, "value": [0.8, 0, 0], "easing": "hold" }
+      ]
+    },
+    "toeBigR": {
+      "rotation": [
+        { "beat": 0, "value": [0.2, 0, 0] }
+      ]
+    }
+  }
+}
+```
+
+- Angles use radians as `[rx, ry, rz]`.
+- Root translation uses scene units as `[px, py, pz]` and is valid only for `hips`.
+- Keyframes support `smooth`, `linear`, and `hold` easing.
+- Tracks may target any name in `DANCE.motionScript.JOINTS`.
+
+## Source layout
+
+- `src/render/motionScript.js`: schema, validation, joint names, interpolation
+- `src/agent/choreographer.js`: deterministic detailed keyframe generation
+- `src/render/character.js`: translucent body and full skeleton hierarchy
+- `src/render/sequencer.js`: beat clock and direct keyframe playback
+- `test/run-tests.js`: schema, coverage, determinism, and interpolation checks

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Rig — Test Scripts</title>
+  <title>MotionScript v2 Tests</title>
   <style>
     body { margin: 0; padding: 24px; background: #11151c; color: #e6ebf2;
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
@@ -18,18 +18,15 @@
   </style>
 </head>
 <body>
-  <h1>Rig — Random Test Scripts</h1>
-  <p class="sub">Validates the hash-random-string → brief → choreographer pipeline (no THREE, no build).</p>
+  <h1>MotionScript v2 Tests</h1>
+  <p class="sub">Validates detailed joint tracks, keyframe interpolation, and deterministic generation.</p>
   <div id="out">running…</div>
 
-  <!-- Pure-logic pipeline + THREE-free rig modules (moves/rigLimits/fingers/springs). -->
+  <!-- Pure-logic pipeline; no THREE or build step. -->
   <script src="../src/config/constants.js"></script>
-  <script src="../src/render/moves.js"></script>
+  <script src="../src/render/motionScript.js"></script>
   <script src="../src/agent/seeds.js"></script>
   <script src="../src/agent/choreographer.js"></script>
-  <script src="../src/render/rigLimits.js"></script>
-  <script src="../src/render/fingers.js"></script>
-  <script src="../src/render/springs.js"></script>
   <script src="./run-tests.js"></script>
 </body>
 </html>

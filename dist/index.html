@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI Dance Simulator — Theme 3 (Compiled)</title>
+  <title>Detailed Skeleton Choreographer</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
@@ -14,10 +14,32 @@
     </div>
 
     <aside id="panel">
-      <h1>Dance Simulator <span class="tag">Theme 3</span></h1>
-      <p class="sub">5 random seeds → 5 motion scripts. Pick one and play.</p>
+      <h1>Skeleton Choreographer <span class="tag">MotionScript v2</span></h1>
+      <p class="sub">MediaPipe-style 3D landmarks with volumetric, human-proportioned connections.</p>
 
       <div id="status" class="ok">initializing…</div>
+
+      <fieldset class="profile-field">
+        <legend>Body profile</legend>
+        <div class="segmented">
+          <button type="button" data-profile="male" aria-pressed="true">Male <small>1.78 m</small></button>
+          <button type="button" data-profile="female" aria-pressed="false">Female <small>1.65 m</small></button>
+        </div>
+      </fieldset>
+
+      <fieldset class="component-field">
+        <legend>Human Primitive components</legend>
+        <div class="component-grid">
+          <label class="field">
+            <span>Part</span>
+            <select id="componentCategory"></select>
+          </label>
+          <label class="field">
+            <span>Variant</span>
+            <select id="componentVariant"></select>
+          </label>
+        </div>
+      </fieldset>
 
       <label class="field">
         <span>Motion script</span>
@@ -35,18 +57,16 @@
       <div class="hud">
         <div><span>beat</span><b id="beat">0</b></div>
         <div><span>section</span><b id="section">-</b></div>
-        <div><span>move</span><b id="move">-</b></div>
-        <div><span>state</span><b id="state">STAND</b></div>
+        <div><span>control</span><b id="move">-</b></div>
+        <div><span>height</span><b id="state">1.78 m</b></div>
         <div class="dotwrap"><span>on-beat</span><i id="beatDot"></i></div>
       </div>
 
-      <p class="foot">Offline · no build · no API key. three.js r140 + VRM (vendored).</p>
+      <p class="foot">Offline · 59 articulated joints · radians · beat-keyed interpolation.</p>
     </aside>
   </main>
 
-  <!-- Classic scripts define DANCE.* using window.THREE lazily and DANCE.main
-       (no auto-run). The module below sets window.THREE, loads the VRM, then
-       calls DANCE.main(vrm). -->
+    <!-- Classic scripts define DANCE.*; the module below supplies vendored THREE. -->
   <script src="./app.bundle.js"></script>
 
   <script type="importmap">
@@ -55,40 +75,11 @@
 
   <script type="module">
     import * as THREE from 'three';
-    import { GLTFLoader } from './vendor/jsm/loaders/GLTFLoader.js';
-    import { VRMLoaderPlugin, VRMUtils } from './vendor/three-vrm.module.js';
-
     window.THREE = THREE;
     const status = document.getElementById('status');
     const setStatus = (msg, cls) => { if (status) { status.textContent = msg; status.className = cls || ''; } };
-
-    function boot(vrm) {
-      try { DANCE.main(vrm); }
-      catch (e) { setStatus('Boot error: ' + (e && e.message || e), 'fail'); console.error(e); }
-    }
-
-    setStatus('loading human model…', 'ok');
-    const loader = new GLTFLoader();
-    loader.register((parser) => new VRMLoaderPlugin(parser));
-    loader.load(
-      './assets/vrm/character.vrm',
-      (gltf) => {
-        const vrm = gltf.userData.vrm;
-        if (!vrm) { setStatus('VRM missing — using primitive rig', 'fail'); boot(null); return; }
-        VRMUtils.rotateVRM0(vrm); // normalize legacy VRM0 to face +Z (no-op for VRM1)
-        vrm.scene.traverse((o) => {
-          o.frustumCulled = false;
-          if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; }
-        });
-        boot(vrm);
-      },
-      undefined,
-      (err) => {
-        console.warn('VRM load failed:', err);
-        setStatus('VRM load failed — using primitive rig', 'fail');
-        boot(null);
-      }
-    );
+    try { DANCE.main(); }
+    catch (error) { setStatus('Boot error: ' + (error && error.message || error), 'fail'); console.error(error); }
   </script>
 </body>
 </html>

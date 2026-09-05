@@ -1,23 +1,8 @@
-// Config + taxonomies + body-state machine (Theme 3).
+// Song and choreography taxonomies.
 // Pure JS, no THREE dependency, so it can run in a browser or Node.
 window.DANCE = window.DANCE || {};
 
 DANCE.constants = (function () {
-  const BODY_STATES = ['STAND', 'SIT', 'FLOOR', 'AIR'];
-
-  // Legal state transitions -> transition clip id.
-  // STAND<->SIT, STAND<->FLOOR, SIT<->FLOOR, STAND->AIR->STAND (jump only).
-  const TRANSITIONS = {
-    'STAND->SIT': 'tr_stand_sit',
-    'SIT->STAND': 'tr_sit_stand',
-    'STAND->FLOOR': 'tr_stand_floor',
-    'FLOOR->STAND': 'tr_floor_stand',
-    'SIT->FLOOR': 'tr_sit_floor',
-    'FLOOR->SIT': 'tr_floor_sit',
-    'STAND->AIR': 'tr_jump_up',
-    'AIR->STAND': 'tr_jump_land'
-  };
-
   // genre -> dance_genre subset (from feasibility.md).
   const GENRE_TO_DANCE = {
     pop: ['commercial_kpop', 'jazz_funk'],
@@ -57,5 +42,5 @@ DANCE.constants = (function () {
     'jazz_funk', 'commercial_kpop', 'contemporary', 'lyrical', 'freestyle'
   ];
 
-  return { BODY_STATES, TRANSITIONS, GENRE_TO_DANCE, DEMO_SONG, DANCE_GENRES };
+  return { GENRE_TO_DANCE, DEMO_SONG, DANCE_GENRES };
 })();
