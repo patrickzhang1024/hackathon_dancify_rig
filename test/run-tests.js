@@ -28,6 +28,36 @@
     ['handL', 'upperLegL', 'hips', 'neck', 'upperArmL'].every((joint) =>
       actionTracks[joint].rotation.some((key) => key.value.some((value) => Math.abs(value) > 0.001))));
 
+  // ---- section-based ActionScript v3: one routine per label, expanded by the rig ----
+  const makeRoutine = (frequency) => ({
+    description: 'demo routine',
+    actions: DANCE.actionLibrary.GROUPS.map((group) => {
+      const preset = DANCE.actionLibrary.list().find((entry) => entry.group === group);
+      return { group, action: preset.name, frequency, intensity: 1 };
+    })
+  });
+  const actionScriptV3 = {
+    version: 3, bpm: 120, beatsPerBar: 4, totalBeats: 32,
+    sections: [
+      { label: 'intro', startBeat: 0, endBeat: 8, startS: 0, endS: 4 },
+      { label: 'verse', startBeat: 8, endBeat: 20, startS: 4, endS: 10 },
+      { label: 'verse', startBeat: 20, endBeat: 32, startS: 10, endS: 16 }
+    ],
+    routines: { intro: makeRoutine(0.5), verse: makeRoutine(1) }
+  };
+  const v3Validation = DANCE.actionLibrary.validateScript(actionScriptV3);
+  assert('ActionScript v3 passes the compact-schema validator', v3Validation.ok, v3Validation.errors.join('; '));
+  const compiledV3 = DANCE.actionLibrary.compileScript(actionScriptV3);
+  assert('v3 compiles into a valid MotionScript v2 with section markers',
+    DANCE.motionScript.validate(compiledV3).ok && compiledV3.version === 2 &&
+    compiledV3.markers.length === 3 && compiledV3.tracks.hips.rotation.length > 0);
+  const expandedV3 = DANCE.actionLibrary.expandToActions(actionScriptV3);
+  const firstVerse = expandedV3.filter((a) => a.startBeat === 8).map((a) => a.action).sort().join(',');
+  const secondVerse = expandedV3.filter((a) => a.startBeat === 20).map((a) => a.action).sort().join(',');
+  assert('repeated sections reuse one routine and cover the song',
+    firstVerse.length > 0 && firstVerse === secondVerse &&
+    DANCE.actionLibrary.validate(expandedV3, 32, true) === null);
+
   const detailJoints = ['thumbDistalL', 'littleIntermediateR', 'toeBaseL', 'toeBaseR'];
   assert('finger and toe joints have independent keyframes',
     detailJoints.every((joint) => sample.tracks[joint].rotation.length > 2));

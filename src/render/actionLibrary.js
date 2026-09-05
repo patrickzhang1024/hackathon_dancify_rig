@@ -259,8 +259,8 @@ DANCE.actionLibrary = (function () {
       if (!Number.isFinite(action.frequency) || action.frequency <= 0 || action.frequency > 4) {
         return 'frequency must be within (0, 4] cycles per beat';
       }
-      if (!Number.isFinite(action.repetitions) || action.repetitions <= 0 || action.repetitions > 256) {
-        return 'repetitions must be within (0, 256]';
+      if (!Number.isFinite(action.repetitions) || action.repetitions <= 0 || action.repetitions > 4096) {
+        return 'repetitions must be within (0, 4096]';
       }
       if (action.intensity != null && (!Number.isFinite(action.intensity) || action.intensity < 0.5 || action.intensity > 1.5)) {
         return 'intensity must be within [0.5, 1.5]';
@@ -312,5 +312,110 @@ DANCE.actionLibrary = (function () {
     return Object.keys(DEFINITIONS).map((name) => ({ name, group: DEFINITIONS[name].group, label: DEFINITIONS[name].label }));
   }
 
-  return { GROUPS, list, validate, compile, durationOf };
+  // ---- Section-based ActionScript v3 (compact input the agent ships) ------
+  // routines are keyed by section label so repeated sections (e.g. every verse)
+  // reuse one dance; each routine action LOOPS across the section duration.
+
+  function expandToActions(script) {
+    const actions = [];
+    for (const section of script.sections) {
+      const routine = script.routines[section.label];
+      if (!routine) continue;
+      const duration = section.endBeat - section.startBeat;
+      for (const action of routine.actions) {
+        actions.push({
+          startBeat: section.startBeat,
+          action: action.action,
+          group: action.group,
+          frequency: action.frequency,
+          repetitions: duration * action.frequency,
+          intensity: action.intensity
+        });
+      }
+    }
+    return actions;
+  }
+
+  function validateScript(script) {
+    const errors = [];
+    if (!script || script.version !== 3) errors.push('version must be 3');
+    if (!script || !(script.bpm > 0)) errors.push('bpm must be positive');
+    if (!script || !(script.totalBeats > 0)) errors.push('totalBeats must be positive');
+    if (!script || !Array.isArray(script.sections) || !script.sections.length) {
+      errors.push('sections must be a non-empty array');
+      return { ok: false, errors };
+    }
+    if (!script.routines || typeof script.routines !== 'object') {
+      errors.push('routines must be an object');
+      return { ok: false, errors };
+    }
+    let expected = 0;
+    for (const section of script.sections) {
+      if (!section || typeof section.label !== 'string' || !section.label.trim()) {
+        errors.push('each section needs a label'); break;
+      }
+      if (!Number.isFinite(section.startBeat) || !Number.isFinite(section.endBeat) ||
+          Math.abs(section.startBeat - expected) > 0.001 || section.endBeat <= section.startBeat ||
+          section.endBeat > script.totalBeats + 0.001) {
+        errors.push('sections must be contiguous, ordered, and within the song'); break;
+      }
+      if (!script.routines[section.label]) {
+        errors.push('missing routine for section "' + section.label + '"'); break;
+      }
+      expected = section.endBeat;
+    }
+    if (!errors.length && Math.abs(expected - script.totalBeats) > 0.001) {
+      errors.push('sections must cover the whole song');
+    }
+    for (const label in script.routines) {
+      const routine = script.routines[label];
+      if (!routine || typeof routine.description !== 'string' || !routine.description.trim()) {
+        errors.push('routine "' + label + '" needs a description');
+      }
+      if (!routine || !Array.isArray(routine.actions) || routine.actions.length !== GROUPS.length) {
+        errors.push('routine "' + label + '" needs one action per body group'); continue;
+      }
+      const seen = new Set();
+      for (const action of routine.actions) {
+        const definition = action && DEFINITIONS[action.action];
+        if (!definition || action.group !== definition.group || seen.has(action.group)) {
+          errors.push('routine "' + label + '" has an invalid or duplicate action'); continue;
+        }
+        if (!Number.isFinite(action.frequency) || action.frequency <= 0 || action.frequency > 4) {
+          errors.push('routine "' + label + '" action frequency must be within (0, 4]');
+        }
+        if (!Number.isFinite(action.intensity) || action.intensity < 0.5 || action.intensity > 1.5) {
+          errors.push('routine "' + label + '" action intensity must be within [0.5, 1.5]');
+        }
+        seen.add(action.group);
+      }
+    }
+    return { ok: errors.length === 0, errors };
+  }
+
+  // Compile a compact ActionScript v3 into an executable MotionScript v2. The
+  // dense per-joint keyframes live only in memory; the shipped v3 stays small.
+  function compileScript(script) {
+    const check = validateScript(script);
+    if (!check.ok) throw new Error('Invalid ActionScript v3: ' + check.errors.join('; '));
+    const totalBeats = script.totalBeats;
+    const stepBeat = Math.max(1e-3, round3(0.1 * script.bpm / 60)); // ~100ms sampling for smooth playback
+    const samples = [];
+    for (let beat = 0; beat < totalBeats - 1e-6; beat = round3(beat + stepBeat)) samples.push(beat);
+    const compiled = {
+      version: 2,
+      bpm: script.bpm,
+      beatsPerBar: script.beatsPerBar,
+      totalBeats,
+      markers: script.sections.map((section) => ({ beat: section.startBeat, label: section.label })),
+      sections: script.sections,
+      tracks: compile(expandToActions(script), totalBeats, samples)
+    };
+    for (const key of ['seed', 'brief', 'title', 'emotion', 'source']) {
+      if (script[key] != null) compiled[key] = script[key];
+    }
+    return compiled;
+  }
+
+  return { GROUPS, list, validate, compile, durationOf, expandToActions, validateScript, compileScript };
 })();

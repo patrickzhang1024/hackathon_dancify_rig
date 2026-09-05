@@ -28,9 +28,12 @@ DANCE.Sequencer = function Sequencer(rig, onFrame) {
   }
 
   function setScript(nextScript) {
-    const result = DANCE.motionScript.validate(nextScript);
+    // Compact section-based ActionScript v3 -> executable MotionScript v2.
+    const compiled = nextScript && nextScript.version === 3
+      ? DANCE.actionLibrary.compileScript(nextScript) : nextScript;
+    const result = DANCE.motionScript.validate(compiled);
     if (!result.ok) throw new Error('Invalid MotionScript: ' + result.errors.join('; '));
-    script = nextScript;
+    script = compiled;
     beat = 0;
     playing = false;
     apply();
