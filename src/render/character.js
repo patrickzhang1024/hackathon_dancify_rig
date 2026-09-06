@@ -6,19 +6,17 @@ DANCE.createRig = function createRig(initialProfile) {
   const T = window.THREE;
   const root = new T.Group();
   const loader = new window.GLTFLoader();
-  let profileName = initialProfile || 'male';
+  let profileName = initialProfile || 'test_male';
   let joints = {};
   let restQuaternions = {};
   let pendingPose = DANCE.motionScript.basePose();
   let loadVersion = 0;
   let skeletonView = null;
 
-  const DETAIL = 4; // Males and females both use their own detail-4 body.
   const PROFILES = {
-    // showSkin: the female export carries a skinned mesh; the male asset is
-    // still skeleton-only, so its unrigged mesh parts stay hidden.
-    male: { label: 'Male', height: 1.76, showSkin: false },
-    female: { label: 'Female', height: 1.7018, showSkin: true }
+    test_male: { label: 'test_male', height: 1.78, asset: 'test_male.glb' },
+    test_female: { label: 'test_female', height: 1.65, asset: 'test_female.glb' },
+    female: { label: 'female-4', height: 1.7018, asset: 'female-4.glb' }
   };
   const BONE_MAP = {
     hips: 'spine', spine: 'spine001', spine1: 'spine002', spine2: 'spine003', neck: 'spine005', head: 'spine006',
@@ -75,10 +73,9 @@ DANCE.createRig = function createRig(initialProfile) {
 
   function indexBones(model) {
     const bones = {};
-    const showSkin = PROFILES[profileName].showSkin === true;
     model.traverse((object) => {
       if (object.isBone) bones[object.name] = object;
-      else if (object.isMesh) object.visible = showSkin;
+      else if (object.isMesh) object.visible = true;
     });
 
     joints = {};
@@ -94,8 +91,8 @@ DANCE.createRig = function createRig(initialProfile) {
 
   function loadBody() {
     const version = ++loadVersion;
-    const detail = DETAIL;
-    const url = window.DANCE_ASSET_ROOT + 'models/' + profileName + '-' + detail + '.glb?v=' + window.DANCE_ASSET_VERSION;
+    const profile = PROFILES[profileName];
+    const url = window.DANCE_ASSET_ROOT + 'models/' + profile.asset + '?v=' + window.DANCE_ASSET_VERSION;
     notify('loading', 'Loading Human Primitive body...');
     loader.load(url, (gltf) => {
       if (version !== loadVersion) return;
@@ -113,7 +110,7 @@ DANCE.createRig = function createRig(initialProfile) {
         root.userData.height = PROFILES[profileName].height;
         root.userData.dimensions = { floor: 0, crown: PROFILES[profileName].height };
         applyPose(pendingPose);
-        notify('ready', PROFILES[profileName].label + ' detail ' + detail + ' ready');
+        notify('ready', profile.label + ' ready');
       } catch (error) {
         console.error(error);
         notify('error', error.message);

@@ -1,14 +1,12 @@
 # Detailed Skeleton Choreographer
 
-Offline three.js demo that renders a **Mixamo52** skeleton (52 joints) driven by a validated MotionScript. The male and female bodies are exported from Human Primitive Legacy; their skinned meshes are hidden and only the joint-to-joint rig is drawn.
+Offline three.js demo that renders Human Primitive Legacy skins driven by a validated **Mixamo52** skeleton (52 joints).
 
 The skeleton is aligned exactly to `reference/skin-tokens`' Mixamo52 rig: 52 canonical `mixamorig:*` joints, a single root, and strict parent-before-child ordering. `src/render/skeleton.js` asserts this on load. MotionScript drives those 52 joints, and anatomical joint limits are clamped every frame.
 
-The right panel switches between the authored male (1.76 m) and female (1.64 m) profiles. Both are locked to the source project's body-detail level 4 and share the same armature bone names, so each maps to the identical 52-joint rig at its own scale. These GPL-3.0 bodies are modeling primitives rather than optimized game-ready meshes.
+The right panel switches between two requested profiles. `test_male` uses male body 4, hand 4, feet 5 at 1.78 m. `test_female` uses female body 4, hand 3, feet 6 at 1.65 m. Both share the same deform-bone mapping to the canonical Skin-Tokens Mixamo52 rig. These GPL-3.0 bodies are modeling primitives rather than optimized game-ready meshes.
 
-Only the skeleton is drawn: joint points and joint-to-joint bone segments. The skinned meshes, skeleton helpers, support lines, ground geometry, and the grid are not displayed.
-
-**Roadmap:** `reference/skin-tokens` will later generate a skin ("皮套") bound to this Mixamo52 rig. The MotionScript spec is the control contract between the rig and the choreography layer; the end goal is that motion scripts returned by an upstream AI agent play back as recognizable dance poses in this viewport.
+The skinned meshes and the live joint-to-joint skeleton overlay are displayed together. The MotionScript spec is the control contract between the rig and the choreography layer.
 
 Regenerate the browser assets with Blender 5.2:
 

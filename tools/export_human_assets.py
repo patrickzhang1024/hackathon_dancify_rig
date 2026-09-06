@@ -11,8 +11,10 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "reference" / "Human_Primitive_Legacy" / "Assets"
 TOES = ("big", "index", "middle", "ring", "little")
 
-# Only detail 4 is shipped: male and female each use their own detail-4 body.
-DETAIL = 4
+CHARACTERS = (
+    {"name": "test_male", "profile": "Male", "detail": 4, "hand": 4, "feet": 5, "height": 1.78},
+    {"name": "test_female", "profile": "Female", "detail": 4, "hand": 3, "feet": 6, "height": 1.65},
+)
 
 # Per-profile graft tuning. Male hands read larger; female feet read smaller. Each
 # profile keeps its own authored (differently sized) armature and the grafted skin
@@ -111,8 +113,10 @@ def add_toe_bones(armature):
         armature.data.bones[f"toe.{side}"].use_deform = False
 
 
-def add_fixed_hands(armature, profile):
-    source_mesh, source_armature = load_objects("Hand.blend", ["HAND_05_Deform", "Deform_Rig"])
+def add_fixed_hands(armature, profile, version):
+    source_mesh, source_armature = load_objects(
+        "Hand.blend", [f"HAND_{version:02d}_Deform", "Deform_Rig"]
+    )
     source_root = source_armature.data.bones["hand.L"]
     target_root = armature.data.bones["hand.L"]
     scale = target_root.length / source_root.length * HAND_SCALE[profile]
@@ -131,7 +135,7 @@ def add_fixed_hands(armature, profile):
         transform = align if side == "L" else Matrix.Scale(-1, 4, Vector((1, 0, 0))) @ align
         hand.data.transform(transform)
         _fix_winding(hand, transform)
-        hand.name = f"Hand5.{side}"
+        hand.name = f"Hand{version}.{side}"
         if side == "R":
             for group in hand.vertex_groups:
                 if group.name.endswith(".L"):
@@ -145,8 +149,8 @@ def add_fixed_hands(armature, profile):
     return hands
 
 
-def add_fixed_feet(armature, profile):
-    (source_mesh,) = load_objects("Feet.blend", ["FEET_04"])
+def add_fixed_feet(armature, profile, version):
+    (source_mesh,) = load_objects("Feet.blend", [f"FEET_{version - 1:02d}"])
     minimum = Vector(tuple(min(vertex.co[axis] for vertex in source_mesh.data.vertices) for axis in range(3)))
     maximum = Vector(tuple(max(vertex.co[axis] for vertex in source_mesh.data.vertices) for axis in range(3)))
     top = [vertex.co for vertex in source_mesh.data.vertices if vertex.co.z > maximum.z - 0.08]
@@ -176,7 +180,7 @@ def add_fixed_feet(armature, profile):
             foot.modifiers.remove(modifier)
         foot.data.transform(transform)
         _fix_winding(foot, transform)
-        foot.name = f"Feet5.{side}"
+        foot.name = f"Feet{version}.{side}"
         smooth_mesh(foot)
 
         foot_group = foot.vertex_groups.new(name=f"foot.{side}")
@@ -199,7 +203,67 @@ def add_fixed_feet(armature, profile):
     return feet
 
 
-def export_body(profile, detail, output_dir):
+def world_height(meshes):
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    points = []
+    for obj in meshes:
+        evaluated = obj.evaluated_get(depsgraph)
+        points.extend(evaluated.matrix_world @ vertex.co for vertex in evaluated.data.vertices)
+    floor = min(point.z for point in points)
+    crown = max(point.z for point in points)
+    return floor, crown
+
+
+def expected_dotless_bones():
+    names = {"spine", "spine001", "spine002", "spine003", "spine005", "spine006"}
+    for side in ("L", "R"):
+        names |= {
+            f"shoulder{side}", f"upper_arm{side}", f"forearm{side}", f"hand{side}",
+            f"thigh{side}", f"shin{side}", f"foot{side}", f"toe{side}",
+        }
+        for finger in ("thumb", "f_index", "f_middle", "f_ring", "f_pinky"):
+            names |= {f"{finger}0{segment}{side}" for segment in (1, 2, 3)}
+    return names
+
+
+def fit_and_verify(name, armature, meshes, target_height):
+    bpy.context.view_layer.update()
+    floor, crown = world_height(meshes)
+    scale = Matrix.Scale(target_height / (crown - floor), 4)
+    armature.data.transform(scale)
+    for obj in meshes:
+        obj.data.transform(scale)
+    bpy.context.view_layer.update()
+    floor, _ = world_height(meshes)
+    ground = Matrix.Translation(Vector((0, 0, -floor)))
+    armature.data.transform(ground)
+    for obj in meshes:
+        obj.data.transform(ground)
+    bpy.context.view_layer.update()
+
+    actual_height = world_height(meshes)[1] - world_height(meshes)[0]
+    if abs(actual_height - target_height) > 1e-4:
+        raise RuntimeError(f"{name}: expected {target_height:.2f} m, got {actual_height:.6f} m")
+
+    available = {bone.name.replace(".", "") for bone in armature.data.bones}
+    missing = sorted(expected_dotless_bones() - available)
+    if missing:
+        raise RuntimeError(f"{name}: missing Mixamo52 source bones: {missing}")
+
+    for obj in meshes:
+        modifier = next((item for item in obj.modifiers if item.type == "ARMATURE"), None)
+        if modifier is None or modifier.object != armature:
+            raise RuntimeError(f"{name}: {obj.name} is not bound to the character armature")
+        if any(not vertex.groups for vertex in obj.data.vertices):
+            raise RuntimeError(f"{name}: {obj.name} contains unweighted vertices")
+
+    print(f"OK: {name} is {actual_height:.2f} m and resolves all 52 Mixamo joints")
+
+
+def export_body(character, output_dir):
+    name = character["name"]
+    profile = character["profile"]
+    detail = character["detail"]
     source = SOURCE_DIR / f"{profile}_Human.blend"
     bpy.ops.wm.open_mainfile(filepath=str(source))
 
@@ -214,17 +278,24 @@ def export_body(profile, detail, output_dir):
     armature.location = (0, 0, 0)
     remove_original_extremities(mesh, armature)
     add_toe_bones(armature)
-    extremities = add_fixed_hands(armature, profile) + add_fixed_feet(armature, profile)
+    extremities = (
+        add_fixed_hands(armature, profile, character["hand"])
+        + add_fixed_feet(armature, profile, character["feet"])
+    )
+    meshes = (mesh, *extremities)
+    mesh.name = f"{name}_Body"
+    armature.name = f"{name}_Rig"
+    fit_and_verify(name, armature, meshes, character["height"])
 
     bpy.ops.object.select_all(action="DESELECT")
-    for obj in (mesh, armature, *extremities):
+    for obj in (armature, *meshes):
         obj.hide_set(False)
         obj.hide_viewport = False
         obj.hide_render = False
         obj.select_set(True)
     bpy.context.view_layer.objects.active = armature
 
-    output = output_dir / f"{profile.lower()}-{detail}.glb"
+    output = output_dir / f"{name}.glb"
     bpy.ops.export_scene.gltf(
         filepath=str(output),
         export_format="GLB",
@@ -242,8 +313,8 @@ def main():
     args = parser.parse_args(sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else [])
     args.output.mkdir(parents=True, exist_ok=True)
 
-    for profile in ("Male", "Female"):
-        export_body(profile, DETAIL, args.output)
+    for character in CHARACTERS:
+        export_body(character, args.output)
 
 
 if __name__ == "__main__":

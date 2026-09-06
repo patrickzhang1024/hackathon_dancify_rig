@@ -15,15 +15,15 @@
 
     <aside id="panel">
       <h1>Skeleton Choreographer <span class="tag">MotionScript v2</span></h1>
-      <p class="sub">Authored anatomical deform skeleton — joint-to-joint bones only.</p>
+      <p class="sub">Human Primitive skins bound to the 52-joint motion rig.</p>
 
       <div id="status" class="ok">initializing…</div>
 
       <fieldset class="profile-field">
         <legend>Body profile</legend>
         <div class="segmented">
-          <button type="button" data-profile="male" aria-pressed="true">Male <small>1.76 m</small></button>
-          <button type="button" data-profile="female" aria-pressed="false">Female <small>1.70 m</small></button>
+          <button type="button" data-profile="test_male" aria-pressed="true">test_male <small>1.78 m</small></button>
+          <button type="button" data-profile="test_female" aria-pressed="false">test_female <small>1.65 m</small></button>
         </div>
       </fieldset>
 
@@ -48,7 +48,7 @@
         <div class="dotwrap"><span>on-beat</span><i id="beatDot"></i></div>
       </div>
 
-      <p class="foot">Offline · skeleton-only rig · bounded beat-keyed motion.</p>
+      <p class="foot">Offline · skinned 52-joint rig · bounded beat-keyed motion.</p>
     </aside>
   </main>
 
@@ -65,7 +65,7 @@
     window.THREE = THREE;
     window.GLTFLoader = GLTFLoader;
     window.DANCE_ASSET_ROOT = './assets/';
-    window.DANCE_ASSET_VERSION = '12';
+    window.DANCE_ASSET_VERSION = '15';
     const status = document.getElementById('status');
     const setStatus = (msg, cls) => { if (status) { status.textContent = msg; status.className = cls || ''; } };
     try { DANCE.main(); }
