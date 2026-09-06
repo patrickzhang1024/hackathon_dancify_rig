@@ -70,6 +70,7 @@ DANCE.createRig = function createRig(initialProfile) {
     for (const name of DANCE.motionScript.JOINTS) applyJoint(name, pose[name]);
     const hips = pose.hips;
     root.position.set(hips.px || 0, hips.py || 0, hips.pz || 0);
+    root.rotation.y = hips.facing || 0;
   }
 
   function indexBones(model) {

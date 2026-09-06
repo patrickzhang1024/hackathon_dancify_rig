@@ -19,14 +19,47 @@
   });
   const actionTracks = DANCE.actionLibrary.compile(scheduledActions, 8,
     Array.from({ length: 81 }, (_, index) => index / 10));
-  assert('rig exposes presets for hands, legs, waist, neck, and arms',
+  assert('rig exposes presets for full-body motion, hands, legs, waist, neck, and arms',
     DANCE.actionLibrary.GROUPS.every((group) => DANCE.actionLibrary.list().some((entry) => entry.group === group)));
   assert('scheduled actions compile by frequency and repetition count',
     DANCE.actionLibrary.validate(scheduledActions, 8, true) === null &&
     DANCE.motionScript.validate({ version: 2, bpm: 120, totalBeats: 8, tracks: actionTracks }).ok);
-  assert('all five action groups produce visible joint values',
+  assert('all six action groups produce visible joint values',
     ['handL', 'upperLegL', 'hips', 'neck', 'upperArmL'].every((joint) =>
       actionTracks[joint].rotation.some((key) => key.value.some((value) => Math.abs(value) > 0.001))));
+  const catalog = DANCE.actionLibrary.list();
+  const fullBodyNames = catalog.filter((entry) => entry.group === 'fullBody').map((entry) => entry.name);
+  assert('full-body catalog includes standard traveling, groove, body-wave, and turning vocabulary',
+    ['twoStepGroove', 'runningMan', 'charlestonBasic', 'grapevine', 'jazzSquare', 'bodyRoll',
+      'salsaBasic', 'pivotQuarterTurn', 'halfTurnStep', 'sideFacingGroove']
+      .every((name) => fullBodyNames.includes(name)) &&
+    catalog.filter((entry) => entry.group === 'fullBody').every((entry) => entry.mechanics.length > 20));
+  const allFullBodyPresetsCompile = fullBodyNames.every((name) => {
+    const actions = scheduledActions.map((action) => action.group === 'fullBody'
+      ? { ...action, action: name, repetitions: 1 }
+      : { ...action, repetitions: 1 });
+    try {
+      const tracks = DANCE.actionLibrary.compile(actions, 2,
+        Array.from({ length: 17 }, (_, index) => index / 8));
+      const script = { version: 2, bpm: 120, totalBeats: 2, tracks };
+      return DANCE.motionScript.validate(script).ok &&
+        Object.values(tracks).every((track) => Object.values(track).every((keys) =>
+          keys.every((key) => key.value.every(Number.isFinite))));
+    } catch (_) {
+      return false;
+    }
+  });
+  assert('every full-body preset compiles to finite valid motion tracks', allFullBodyPresetsCompile);
+
+  const turningActions = scheduledActions.map((action) => action.group === 'fullBody'
+    ? { ...action, action: 'halfTurnStep' }
+    : action);
+  const turningTracks = DANCE.actionLibrary.compile(turningActions, 8, [0, 1, 2]);
+  const turnedPose = DANCE.motionScript.evaluate({
+    version: 2, bpm: 120, totalBeats: 8, tracks: turningTracks
+  }, 1);
+  assert('turn presets rotate the whole performer through the hips facing channel',
+    turningTracks.hips.facing.length >= 3 && Math.abs(turnedPose.hips.facing - Math.PI) < 0.001);
 
   // ---- section-based ActionScript v3: one routine per label, expanded by the rig ----
   const makeRoutine = (frequency) => ({
@@ -47,6 +80,13 @@
   };
   const v3Validation = DANCE.actionLibrary.validateScript(actionScriptV3);
   assert('ActionScript v3 passes the compact-schema validator', v3Validation.ok, v3Validation.errors.join('; '));
+  const legacyV3 = JSON.parse(JSON.stringify(actionScriptV3));
+  for (const label in legacyV3.routines) {
+    legacyV3.routines[label].actions = legacyV3.routines[label].actions.filter((action) => action.group !== 'fullBody');
+  }
+  assert('legacy five-group ActionScript v3 remains playable',
+    DANCE.actionLibrary.validateScript(legacyV3).ok &&
+    DANCE.motionScript.validate(DANCE.actionLibrary.compileScript(legacyV3)).ok);
   const compiledV3 = DANCE.actionLibrary.compileScript(actionScriptV3);
   assert('v3 compiles into a valid MotionScript v2 with section markers',
     DANCE.motionScript.validate(compiledV3).ok && compiledV3.version === 2 &&
@@ -90,7 +130,7 @@
   };
   const midpoint = DANCE.motionScript.evaluate(interpolationScript, 1);
   assert('rotation and root position interpolate at sub-beat time within anatomical limits',
-    midpoint.hips.ry === 0.7 && midpoint.hips.px === 1 && midpoint.toeBaseR.rx === 0.5,
+    midpoint.hips.ry === 0.7 && midpoint.hips.px === 1 && midpoint.hips.facing === 0 && midpoint.toeBaseR.rx === 0.5,
     JSON.stringify({ hips: midpoint.hips, toe: midpoint.toeBaseR }));
 
   const unsafeScript = JSON.parse(JSON.stringify(interpolationScript));

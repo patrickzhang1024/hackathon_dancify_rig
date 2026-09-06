@@ -68,6 +68,7 @@ DANCE.motionScript = (function () {
     pose.hips.px = 0;
     pose.hips.py = 0;
     pose.hips.pz = 0;
+    pose.hips.facing = 0;
     return pose;
   }
 
@@ -100,6 +101,7 @@ DANCE.motionScript = (function () {
         pose.hips.py = position[1];
         pose.hips.pz = position[2];
       }
+      if (joint === 'hips' && track.facing) pose.hips.facing = sample(track.facing, beat, 1)[0];
     }
     return pose;
   }
@@ -135,10 +137,13 @@ DANCE.motionScript = (function () {
     for (const joint in script.tracks) {
       if (!JOINT_SET.has(joint)) errors.push('unknown joint ' + joint);
       const track = script.tracks[joint];
-      for (const channel of ['rotation', 'position']) {
+      for (const channel of ['rotation', 'position', 'facing']) {
         const keys = track[channel];
         if (channel === 'position' && joint !== 'hips' && keys) {
           errors.push('position is only valid on hips');
+        }
+        if (channel === 'facing' && joint !== 'hips' && keys) {
+          errors.push('facing is only valid on hips');
         }
         if (!keys) continue;
         let previousBeat = -Infinity;
@@ -146,8 +151,9 @@ DANCE.motionScript = (function () {
           if (!Number.isFinite(key.beat) || key.beat < previousBeat) {
             errors.push(joint + '.' + channel + ' keys must be ordered');
           }
-          if (!Array.isArray(key.value) || key.value.length !== 3 || !key.value.every(Number.isFinite)) {
-            errors.push(joint + '.' + channel + ' values must contain 3 finite numbers');
+          const size = channel === 'facing' ? 1 : 3;
+          if (!Array.isArray(key.value) || key.value.length !== size || !key.value.every(Number.isFinite)) {
+            errors.push(joint + '.' + channel + ' values must contain ' + size + ' finite numbers');
           }
           if (key.easing && !easing[key.easing]) errors.push('unknown easing ' + key.easing);
           previousBeat = key.beat;

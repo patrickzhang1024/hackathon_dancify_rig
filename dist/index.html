@@ -23,7 +23,7 @@
         <legend>Body profile</legend>
         <div class="segmented">
           <button type="button" data-profile="male" aria-pressed="true">Male <small>1.76 m</small></button>
-          <button type="button" data-profile="female" aria-pressed="false">Female <small>1.64 m</small></button>
+          <button type="button" data-profile="female" aria-pressed="false">Female <small>1.70 m</small></button>
         </div>
       </fieldset>
 
@@ -65,7 +65,7 @@
     window.THREE = THREE;
     window.GLTFLoader = GLTFLoader;
     window.DANCE_ASSET_ROOT = './assets/';
-    window.DANCE_ASSET_VERSION = '10';
+    window.DANCE_ASSET_VERSION = '12';
     const status = document.getElementById('status');
     const setStatus = (msg, cls) => { if (status) { status.textContent = msg; status.className = cls || ''; } };
     try { DANCE.main(); }

@@ -50,7 +50,7 @@ The rig owns reusable action primitives in `src/render/actionLibrary.js`. Choreo
 }
 ```
 
-`frequency` is cycles per beat, so duration is `repetitions / frequency` beats. A complete agent phrase schedules one action for each group: `hands`, `legs`, `waist`, `neck`, and `arms`. The action library validates full-song coverage and compiles the schedule into MotionScript v2.
+`frequency` is cycles per beat, so duration is `repetitions / frequency` beats. A complete agent phrase schedules one action for each group: `fullBody`, `hands`, `legs`, `waist`, `neck`, and `arms`. `fullBody` owns coordinated pathways such as turns, side-facing grooves, cross-steps, traveling steps, and body waves; the other groups layer detail over it. The action library validates full-song coverage and compiles the schedule into MotionScript v2.
 
 ## MotionScript v2
 
@@ -66,6 +66,9 @@ MotionScript remains the renderer contract and stores editable, beat-keyed chann
     "hips": {
       "position": [
         { "beat": 0, "value": [0, 0, 0], "easing": "smooth" }
+      ],
+      "facing": [
+        { "beat": 0, "value": [0], "easing": "smooth" }
       ],
       "rotation": [
         { "beat": 0, "value": [0, 0, 0], "easing": "smooth" }
